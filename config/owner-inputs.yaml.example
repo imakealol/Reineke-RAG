@@ -1,0 +1,95 @@
+# ------------------------------------------------------------
+# Reineke-RAG — owner inputs (Phase 0)
+# Copy to owner-inputs.yaml and fill in with the owner.
+# The coordinator agent writes the real file; this is just the template.
+# ------------------------------------------------------------
+
+organisation:
+  name: "Reineke Technik"
+  primary_domain: "rag.reineke.local"
+  admin_contact: "wf.reineke@reineke-technik.de"
+  language_preference: "de-DE"           # UI default; EN also supported
+
+hardware:
+  host_os: "macOS"                       # macOS | linux
+  host_model: "Apple M4 Max"
+  ram_gb: 64
+  disk_free_gb: 500                      # measured before install
+  gpu: null                              # or e.g. "NVIDIA RTX 4090 24GB"
+  offline_install: false                 # true if host is air-gapped at runtime
+
+paths:
+  data_root: "/var/lib/reineke"
+  config_root: "/etc/reineke"
+  backup_root: "/Volumes/Backup/reineke"
+  watch_root: null                       # e.g. "/Volumes/Docs" if automation profile enabled
+
+tls:
+  strategy: "caddy-internal-ca"          # caddy-internal-ca | letsencrypt-dns | custom
+  custom_cert_path: null
+  custom_key_path: null
+
+groups:
+  # Seed Authentik groups. The first one is always 'admin'.
+  - admin
+  - engineering
+  - qms
+  - sales
+  - finance
+  - hr
+  - guest
+
+folders:
+  # Logical folder taxonomy + ACLs.
+  # path must start with '/'. acl_groups is a list of groups allowed to READ.
+  # Uploads are restricted by the ingestion-api (admins + any member of the group).
+  - path: "/qms/normen"
+    acl_groups: [admin, qms, engineering]
+    description: "Normen und Richtlinien (QMS)"
+  - path: "/qms/prozesse"
+    acl_groups: [admin, qms]
+    description: "Prozesshandbücher"
+  - path: "/technik/konstruktion"
+    acl_groups: [admin, engineering]
+    description: "Konstruktionsunterlagen, Zeichnungen"
+  - path: "/sales/angebote"
+    acl_groups: [admin, sales]
+    description: "Angebote und Kundenkommunikation"
+  - path: "/finance/kalkulation"
+    acl_groups: [admin, finance]
+    description: "Projekt-/Marge-Kalkulationen (XLSX)"
+  - path: "/allgemein"
+    acl_groups: [admin, engineering, qms, sales, finance, hr, guest]
+    description: "Für alle zugänglich"
+
+features:
+  n8n_automation: false                  # enable automation profile in v1?
+  watcher: false                         # inotify/fsevents folder watcher
+  pdf_unlock_attempts: false             # best-effort open empty-password PDFs
+  answer_language_toggle: true           # allow users to force DE or EN answer
+
+evaluation:
+  # Provide 100 sample docs + 50 gold queries before Phase 8.
+  sample_corpus_path: null               # e.g. "/Users/werner/Documents/sample-corpus"
+  gold_queries_path: null                # YAML, see docs/05 §Phase 8
+
+branding:
+  app_name: "Reineke-RAG"
+  primary_color_hex: "#0F6FFF"
+  logo_path: null                        # 512×512 PNG if custom
+
+backup:
+  schedule_cron: "15 2 * * *"            # 02:15 local
+  retention:
+    daily: 7
+    weekly: 4
+    monthly: 12
+  encrypt: false                         # enable for external backup drives
+
+alerting:
+  webhook_url: null                      # Teams/Slack/Mattermost; null = file-only
+  email_on_critical: null
+
+misc:
+  support_email_for_users: "it@reineke-technik.de"
+  data_protection_contact: null

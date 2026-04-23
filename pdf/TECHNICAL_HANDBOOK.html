@@ -1,0 +1,657 @@
+<!doctype html><html><head><meta charset='utf-8'><title>Reineke-RAG</title><style>
+@page { size: A4; margin: 20mm 18mm; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body {
+  font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.45;
+  color: #1a1a1a;
+  max-width: none;
+}
+h1, h2, h3, h4 { color: #0b2545; line-height: 1.25; margin-top: 1.2em; }
+h1 {
+  font-size: 22pt;
+  border-bottom: 2px solid #0b2545;
+  padding-bottom: 0.2em;
+  margin-top: 0;
+  page-break-before: always;
+}
+h1:first-of-type { page-break-before: avoid; }
+h2 { font-size: 16pt; border-bottom: 1px solid #c7ccd5; padding-bottom: 0.15em; }
+h3 { font-size: 13pt; }
+h4 { font-size: 11.5pt; color: #2d3e5c; }
+p { margin: 0.6em 0; }
+a { color: #0f6fff; text-decoration: none; }
+code {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  background: #f3f5f8;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+pre {
+  background: #f3f5f8;
+  border: 1px solid #e1e5eb;
+  border-radius: 4px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-size: 9pt;
+  line-height: 1.4;
+  page-break-inside: avoid;
+}
+pre code { background: transparent; padding: 0; font-size: inherit; }
+blockquote {
+  margin: 0.8em 0;
+  padding: 0.2em 0.9em;
+  border-left: 3px solid #0f6fff;
+  background: #f6faff;
+  color: #3a4352;
+}
+ul, ol { margin: 0.5em 0 0.5em 1.4em; padding: 0; }
+li { margin: 0.15em 0; }
+hr { border: 0; border-top: 1px solid #c7ccd5; margin: 1.4em 0; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 9.5pt;
+  margin: 0.8em 0;
+  page-break-inside: avoid;
+}
+th, td {
+  border: 1px solid #c7ccd5;
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+th { background: #eaf0fa; color: #0b2545; font-weight: 600; }
+tr:nth-child(even) td { background: #fafbfc; }
+.cover {
+  text-align: center;
+  margin: 30mm 0 20mm;
+  page-break-after: always;
+}
+.cover h1 { border: 0; font-size: 32pt; margin: 0; page-break-before: avoid; }
+.cover .subtitle { font-size: 13pt; color: #5a6478; margin-top: 6pt; }
+.cover .meta { font-size: 10pt; color: #8791a3; margin-top: 26pt; }
+</style></head><body><div class="cover"><h1>Reineke-RAG</h1><div class="subtitle">Technical Handbook</div><div class="meta">Reineke-RAG &mdash; 2026</div></div><h1>Reineke-RAG — Technical Handbook</h1>
+<blockquote>For administrators, DevOps, architects, and implementers. Covers what you need to deploy, operate, extend, and troubleshoot Reineke-RAG on a single-host Docker Compose deployment.<br><br><strong>Read before:</strong> <a href="TECH_DESCRIPTION.md">TECH_DESCRIPTION.md</a> for the conceptual overview. This handbook assumes you know <em>what</em> Reineke-RAG is; it documents <em>how to run it</em>.<br><br><strong>Authoritative sources inside the repo:</strong> <a href="docs/02_ARCHITECTURE.md">docs/02_ARCHITECTURE.md</a>, <a href="docs/04_OPERATIONS.md">docs/04_OPERATIONS.md</a>, <a href="docs/adr/">docs/adr/</a>. This handbook is the working copy — when the two disagree, the docs directory wins and this file gets an update.</blockquote>
+<hr>
+<h2>Contents</h2>
+<ol>
+<li><a href="#1-audience-and-prerequisites">Audience and prerequisites</a></li>
+<li><a href="#2-system-overview-for-operators">System overview for operators</a></li>
+<li><a href="#3-host-preparation">Host preparation</a></li>
+<li><a href="#4-installation-online">Installation (online)</a></li>
+<li><a href="#5-installation-air-gapped">Installation (air-gapped)</a></li>
+<li><a href="#6-day-2-operations--rag-admin-cli">Day-2 operations — rag-admin CLI</a></li>
+<li><a href="#7-user-and-group-management">User and group management</a></li>
+<li><a href="#8-folders-and-acls">Folders and ACLs</a></li>
+<li><a href="#9-document-ingestion-and-lifecycle">Document ingestion and lifecycle</a></li>
+<li><a href="#10-retrieval-behaviour-and-tuning">Retrieval behaviour and tuning</a></li>
+<li><a href="#11-model-management">Model management</a></li>
+<li><a href="#12-observability">Observability</a></li>
+<li><a href="#13-backup-and-restore">Backup and restore</a></li>
+<li><a href="#14-security-operations">Security operations</a></li>
+<li><a href="#15-upgrades">Upgrades</a></li>
+<li><a href="#16-performance-tuning">Performance tuning</a></li>
+<li><a href="#17-troubleshooting">Troubleshooting</a></li>
+<li><a href="#18-extending-the-system">Extending the system</a></li>
+<li><a href="#19-appendices">Appendices</a></li>
+</ol>
+<hr>
+<h2>1. Audience and prerequisites</h2>
+<p>This handbook assumes you are comfortable with:</p>
+<ul>
+<li>Docker Compose and container lifecycle (<code>up</code>, <code>logs</code>, <code>exec</code>, <code>restart</code>).</li>
+<li>A POSIX shell and basic Linux/macOS system administration.</li>
+<li>OIDC and JWT concepts at a user level (issuer, client, scope, groups claim).</li>
+<li>Basic SQL and the idea of Postgres roles.</li>
+<li>Reading container logs and identifying "which service is failing" from a composite error.</li>
+</ul>
+<p>You do <strong>not</strong> need to be a machine-learning engineer. The model routing config is declarative; the retrieval pipeline is not something you edit in production — you tune knobs (k values, chunk size, rerank count).</p>
+<h3>Minimum knowledge gate to operate unassisted</h3>
+<p>Before running this system in production, you should be able to:</p>
+<ul>
+<li>Explain what Authentik does and how a user's group ends up in a service's JWT.</li>
+<li>Read a Langfuse trace and point to the reranker span.</li>
+<li>Run <code>rag-admin backup run</code> and restore into a throwaway directory.</li>
+</ul>
+<p>If any of these feels unfamiliar, step through §13 (Backup and restore) and §12 (Observability) on a staging host first.</p>
+<hr>
+<h2>2. System overview for operators</h2>
+<h3>2.1 The 25 containers, grouped by concern</h3>
+<table><thead><tr><th>Group</th><th>Service</th><th>Role</th><th>Fails to…</th></tr></thead><tbody><tr><td>Edge</td><td><code>caddy</code></td><td>TLS termination, routing, internal CA</td><td>Everything externally</td></tr><tr><td>Identity</td><td><code>authentik-server</code>, <code>authentik-worker</code>, <code>authentik-db</code>, <code>authentik-redis</code></td><td>OIDC IdP + groups + blueprints</td><td>Logins broken; emergency token fallback</td></tr><tr><td>App DB</td><td><code>postgres</code></td><td><code>rag.*</code> schema</td><td>APIs return 5xx</td></tr><tr><td>Queue</td><td><code>redis</code></td><td>RQ queue, pub/sub</td><td>Ingestion stalls</td></tr><tr><td>Objects</td><td><code>minio</code></td><td>Raw files (immutable, versioned)</td><td>Uploads/previews broken</td></tr><tr><td>Vectors</td><td><code>qdrant</code></td><td>Hybrid index + ACL filter</td><td>Retrieval broken</td></tr><tr><td>LLM runtime</td><td><code>ollama</code>, <code>ollama-init</code>, <code>tei-reranker</code></td><td>Generation + embed + rerank</td><td>Answers broken</td></tr><tr><td>Custom</td><td><code>docling</code>, <code>ingestion-api</code>, <code>ingestion-worker</code>, <code>retrieval-api</code>, <code>duckdb-api</code></td><td>The product</td><td>Functionality broken</td></tr><tr><td>UI</td><td><code>openwebui</code>, <code>pipelines</code></td><td>End-user chat</td><td>Users see a generic OIDC error</td></tr><tr><td>Observability</td><td><code>langfuse</code>, <code>langfuse-db</code>, <code>prometheus</code>, <code>grafana</code>, <code>loki</code>, <code>promtail</code></td><td>Traces + metrics + logs</td><td>Debugging harder; product keeps running</td></tr><tr><td>Automation (profile: <code>automation</code>)</td><td><code>n8n</code>, <code>watcher</code></td><td>Scheduled jobs + folder watch</td><td>Automation stops</td></tr></tbody></table>
+<h3>2.2 Host-facing surface</h3>
+<p>Only <strong>80</strong> and <strong>443</strong> are published by Docker on the host. Everything else is reached via service names on the internal bridge network <code>reineke</code>.</p>
+<p>External paths through Caddy:</p>
+<table><thead><tr><th>URL</th><th>Target</th></tr></thead><tbody><tr><td><code>/</code></td><td>Open WebUI</td></tr><tr><td><code>/auth/…</code></td><td>Authentik</td></tr><tr><td><code>/langfuse</code></td><td>Langfuse</td></tr><tr><td><code>/grafana</code></td><td>Grafana</td></tr><tr><td><code>/n8n/</code></td><td>n8n (automation profile)</td></tr></tbody></table>
+<p>Internal service ports live in <a href="docs/04_OPERATIONS.md">docs/04_OPERATIONS.md Appendix A</a>.</p>
+<h3>2.3 Persistence surface</h3>
+<p>One data root (<code>${DATA_ROOT}</code>, default <code>/var/lib/reineke</code>) contains <strong>one subdirectory per service</strong>. That keeps the backup script legible: one directory → one procedure.</p>
+<pre><code>postgres/  authentik-db/  langfuse-db/  redis/  minio/  qdrant/
+duckdb/    ollama/        tei/          docling/ loki/  grafana/</code></pre>
+<hr>
+<h2>3. Host preparation</h2>
+<h3>3.1 Hardware</h3>
+<table><thead><tr><th>Resource</th><th>Minimum</th><th>Reference</th><th>Recommended</th></tr></thead><tbody><tr><td>CPU / SoC</td><td>8 cores</td><td>Apple M4 Max (14 cores)</td><td>M4 Max or Linux x86 + 24 GB GPU</td></tr><tr><td>RAM</td><td>32 GB</td><td>64 GB</td><td>64–128 GB</td></tr><tr><td>Disk (SSD)</td><td>250 GB</td><td>1 TB</td><td>1 TB + external backup</td></tr><tr><td>OS</td><td>macOS 14+ / Ubuntu 22.04+</td><td>macOS 15 on M4 Max</td><td>—</td></tr><tr><td>Container runtime</td><td>Docker 24+ or Colima 0.7+</td><td>Colima 0.7</td><td>—</td></tr></tbody></table>
+<p>On macOS, use Colima with a generous resource allocation:</p>
+<pre><code>colima start --cpu 10 --memory 48 --disk 200</code></pre>
+<p>Leave ≥ 16 GB of RAM for macOS itself. Docker Desktop is fine; give it the same budget.</p>
+<h3>3.2 DNS and TLS</h3>
+<ul>
+<li>Add an internal DNS entry <code>rag.&lt;your-company&gt;.local</code> → host IP.</li>
+<li>TLS by default uses Caddy's internal CA. Export the CA certificate with <code>scripts/export-ca.sh &gt; ca.crt</code> and distribute it to clients so browsers do not warn.</li>
+<li>For Let's Encrypt via DNS-01, edit the Caddyfile during build handover with the deployment-agent.</li>
+</ul>
+<h3>3.3 Ports</h3>
+<p>Only <strong>80</strong> and <strong>443</strong> inbound on the host. <em>All other Docker ports must remain on the bridge.</em> If your host has a firewall, reject everything else except SSH.</p>
+<h3>3.4 Directories</h3>
+<pre><code>mkdir -p /var/lib/reineke /etc/reineke
+sudo chown "$USER" /var/lib/reineke /etc/reineke</code></pre>
+<h3>3.5 Secrets</h3>
+<p><code>scripts/bootstrap.sh</code> generates missing secrets and writes them to <code>.env</code>. Before first run, decide on and collect (to a password manager):</p>
+<ul>
+<li><code>AUTHENTIK_BOOTSTRAP_PASSWORD</code> (admin's first-login password, will be forced-changed)</li>
+<li><code>BACKUP_GPG_PASSPHRASE_FILE</code> (optional; for encrypted backups)</li>
+<li><code>ALERT_WEBHOOK_URL</code> (optional)</li>
+</ul>
+<p>Everything else (<code>POSTGRES_PASSWORD</code>, <code>QDRANT_API_KEY</code>, <code>MINIO_ROOT_PASSWORD</code>, <code>INTERNAL_SERVICE_TOKEN</code>, <code>LANGFUSE_*</code>, <code>AUTHENTIK_SECRET_KEY</code>) can be auto-generated. After generation, <strong>store <code>.env</code> itself</strong> in your password manager as a single attachment.</p>
+<hr>
+<h2>4. Installation (online)</h2>
+<p>Once <code>services/**</code> has been produced by the agent build, first-time install is:</p>
+<pre><code># 1. Clone or extract the release
+cd /opt &amp;&amp; tar xf reineke-rag-v1.0.0.tar.gz &amp;&amp; cd reineke-rag
+
+# 2. Generate .env + owner-inputs.yaml
+bash scripts/bootstrap.sh
+
+# 3. Pull container images (online)
+make pull
+
+# 4. Pull LLM + embedder + reranker models (~80 GB with heavy tier)
+make pull-models                       # or: PULL_HEAVY=false make pull-models
+
+# 5. Start the core stack
+make up
+
+# 6. Wait for healthchecks (2–5 min on first start)
+make wait-healthy
+
+# 7. Open Authentik and complete bootstrap
+open https://$PRIMARY_DOMAIN/auth/
+
+# 8. Seed folders + ACLs from config/owner-inputs.yaml
+rag-admin folders sync config/owner-inputs.yaml
+
+# 9. Smoke-test retrieval
+rag-admin query "Ping"                 # expects refusal; proves auth + retrieval path</code></pre>
+<p>The smoke-test is deliberately expected to refuse — a "can't find information" response with no leakage proves that (a) OIDC works, (b) Qdrant returned zero points for an unknown term, (c) refusal style triggers correctly.</p>
+<h3>4.1 Compose profiles</h3>
+<table><thead><tr><th>Profile</th><th>Purpose</th><th>Invocation</th></tr></thead><tbody><tr><td>(default)</td><td>Core 19 services</td><td><code>make up</code></td></tr><tr><td><code>minimal</code></td><td>Core minus Langfuse/Loki/Grafana</td><td><code>PROFILES=minimal make up</code></td></tr><tr><td><code>automation</code></td><td>Core + n8n + watcher</td><td><code>make up-automation</code></td></tr><tr><td><code>init</code></td><td>One-shot: pulls Ollama models and exits</td><td><code>make pull-models</code></td></tr></tbody></table>
+<hr>
+<h2>5. Installation (air-gapped)</h2>
+<p>The stack is designed to run without outbound network access. A helper online machine builds a ~100 GB bundle:</p>
+<pre><code># On the online helper
+bash scripts/pack-offline.sh
+# Produces reineke-rag-offline-&lt;date&gt;.tar.gz containing:
+#  - docker save of every image (pinned tags)
+#  - Ollama model weights (bge-m3, gemma2:9b, qwen2.5:32b, llama3.3:70b)
+#  - TEI reranker weights
+#  - Docling OCR models
+#  - Python wheels for custom services</code></pre>
+<p>On the target:</p>
+<pre><code>bash scripts/load-offline.sh reineke-rag-offline-&lt;date&gt;.tar.gz
+make up
+make wait-healthy</code></pre>
+<p>Every runtime path (retrieval, ingestion, auth) must succeed with the LAN cable unplugged — this is tested in Phase 9 (A9.3). If outbound calls appear in the logs, that is a bug.</p>
+<hr>
+<h2>6. Day-2 operations — <code>rag-admin</code> CLI</h2>
+<p><code>rag-admin</code> is a thin Python wrapper that authenticates as an admin and hits the three custom APIs. Most frequent commands:</p>
+<pre><code># Status + health
+rag-admin status                         # container health, queue depth, doc count
+rag-admin jobs list --state failed
+
+# Users
+rag-admin users list
+rag-admin users add alice@company.de --groups engineering,qms
+
+# Folders + ACLs
+rag-admin folders list
+rag-admin folders create /qms/normen --groups admin,qms,engineering
+rag-admin folders set    /qms/normen admin,qms,engineering,auditor
+rag-admin folders move   /qms/normen /qms/standards           # rewrites doc rows
+rag-admin folders delete /qms/normen --wait                   # refuses if docs exist
+
+# Documents
+rag-admin docs list --folder /qms/normen
+rag-admin docs upload ./drop/*.pdf --folder /qms/normen
+rag-admin docs ingest-dir drop/ --base-folder /               # recursive
+rag-admin docs reindex &lt;doc_id&gt;
+rag-admin docs reindex --folder /qms/normen
+rag-admin docs reindex --all --confirm                        # nuclear
+rag-admin docs delete &lt;doc_id&gt;          # soft; 30-day retention
+rag-admin docs delete &lt;doc_id&gt; --hard   # requires ADMIN_CONFIRM=yes
+
+# Queries (for testing)
+rag-admin query "Welche Norm gilt für Typ-B-Schränke?"
+
+# Models
+rag-admin models list
+
+# Backups
+rag-admin backup run
+rag-admin restore plan &lt;backup-dir&gt;     # dry run
+rag-admin restore apply &lt;backup-dir&gt;
+
+# Sessions + audit
+rag-admin sessions revoke-all
+rag-admin audit export --from 2026-01-01 --to 2026-03-31 --format csv &gt; q1.csv
+
+# Alerts
+rag-admin alerts silence &lt;rule&gt; --until 2026-05-01</code></pre>
+<p>Authoritative list in <a href="docs/04_OPERATIONS.md">docs/04_OPERATIONS.md §2.3</a>. Every command hits an HTTP API; anything you can do with the CLI you can do by calling <code>ingestion-api</code> or <code>retrieval-api</code> directly with an admin JWT.</p>
+<hr>
+<h2>7. User and group management</h2>
+<p>Users and groups are managed in <strong>Authentik</strong>. The app DB mirrors the minimum (<code>rag.users.id</code>, email, groups) for audit joins; the mirror refreshes on every JWT validation.</p>
+<h3>7.1 Adding a user</h3>
+<ol>
+<li><code>https://$PRIMARY_DOMAIN/auth/</code> → Directory → Users → Create.</li>
+<li>Fill name + email. Leave password empty to send an invite email (if SMTP configured); otherwise set a temporary password manually and communicate out-of-band.</li>
+<li>Directory → Groups → pick group(s) → add user as member.</li>
+<li>On next login, the user lands in the chat UI at <code>/</code> with the right permissions.</li>
+</ol>
+<h3>7.2 Adding a group</h3>
+<ol>
+<li>Directory → Groups → Create. Pick the name that will be used in folder ACLs (e.g. <code>auditor</code>).</li>
+<li><code>rag-admin folders set /&lt;path&gt; &lt;groups&gt;</code> to grant it access to folders.</li>
+<li>Watch <code>rag-admin jobs list --kind reacl</code> drain (≤ 30 s per 1 000 chunks).</li>
+</ol>
+<h3>7.3 Offboarding</h3>
+<ol>
+<li>In Authentik, toggle the user to Inactive.</li>
+<li>Access tokens (15 min) and refresh tokens (24 h) expire naturally; effective lockout &lt; 1 min in practice because the next token refresh fails.</li>
+<li>Chats are retained per policy; audit entries per retention rules. For an anonymisation path, see the privacy-notes workstream (draft).</li>
+</ol>
+<h3>7.4 Password reset</h3>
+<ul>
+<li>Via Authentik's self-service flow if SMTP is configured.</li>
+<li>Otherwise: Directory → Users → Reset password (temporary) → deliver out-of-band.</li>
+</ul>
+<h3>7.5 Emergency: Authentik down</h3>
+<p><code>ADMIN_BACKUP_TOKEN</code> in <code>.env</code> is a long-lived, emergency-only JWT that grants admin access to <code>rag-admin</code> and the APIs. Rotate every 90 days. Use is logged loudly in <code>audit_log</code>. Never use for normal operations.</p>
+<hr>
+<h2>8. Folders and ACLs</h2>
+<p>The folder tree is <strong>logical</strong> (a database table), not a filesystem. <code>rag.folders</code> is the source of truth; every document has <code>folder_path</code> as a FK. <code>acl_groups TEXT[]</code> on the folder row is copied into every chunk payload (<code>acl_groups</code> indexed field) and into <code>rag.documents.folder_path</code>.</p>
+<h3>8.1 Managing folders</h3>
+<pre><code>rag-admin folders create /qms/normen --groups admin,qms,engineering --description "QMS: Normen"
+rag-admin folders set    /qms/normen admin,qms,engineering,auditor
+rag-admin folders move   /qms/normen /qms/standards     # rewrites rows; no re-embed
+rag-admin folders delete /qms/normen --wait             # fails if docs still exist</code></pre>
+<h3>8.2 ACL change propagation</h3>
+<ul>
+<li>Qdrant <strong>payload rewrite</strong>, no re-embedding. Cheap — Qdrant updates the indexed <code>acl_groups</code> field in place.</li>
+<li>A <code>reacl</code> job runs per affected document; progress visible in <code>rag-admin jobs list</code>.</li>
+<li>DuckDB views (<code>views.v_&lt;table&gt;_&lt;group_hash&gt;</code>) are regenerated lazily on first access per user's group-set.</li>
+</ul>
+<h3>8.3 Read versus write (v1 limitation)</h3>
+<p>v1 lumps read and write access under "group membership". Anyone with read on a folder can also upload there (admins can always). v1.1 will split <code>acl_read</code> / <code>acl_write</code> lists — tracked as a known limitation.</p>
+<h3>8.4 Default ACL</h3>
+<p>New documents without an explicit folder default to <code>DEFAULT_FOLDER_ACL</code> (typically <code>admin</code>). The ingestion-api refuses to upload to a non-existent folder — this is a safeguard against accidentally-public files.</p>
+<hr>
+<h2>9. Document ingestion and lifecycle</h2>
+<h3>9.1 States</h3>
+<pre><code>queued → parsing → embedding → indexed           (happy path)
+                              → failed            (retryable up to 3x)
+                              → superseded        (soft-deleted or replaced)</code></pre>
+<p>Transitions are written atomically to <code>rag.documents.status</code>; a stuck <code>parsing</code> or <code>embedding</code> for &gt; 10 min usually means a container crash — inspect <code>docker compose logs ingestion-worker</code>.</p>
+<h3>9.2 Supported formats</h3>
+<ul>
+<li><strong>Text PDF</strong> — fast path, structure preserved.</li>
+<li><strong>Scanned PDF</strong> — OCR via EasyOCR (default) or Tesseract (<code>OCR_LANG=deu+eng</code>). Slower, quality OCR-bound. Target &gt; 90 % text recovery on the fixture set.</li>
+<li><strong>DOCX</strong> — sections, lists, tables.</li>
+<li><strong>XLSX</strong> — every sheet embedded as chunks <em>and</em> loaded as a DuckDB typed table.</li>
+<li>Optional (enable per-format after Phase 5): <strong>PPTX</strong>, <strong>HTML</strong>, <strong>MD</strong>.</li>
+</ul>
+<h3>9.3 Bulk ingestion</h3>
+<pre><code>mkdir -p drop/qms/normen
+cp /Volumes/Share/QMS/*.pdf drop/qms/normen/
+
+rag-admin docs ingest-dir drop/ --base-folder /
+# or dry run:
+rag-admin docs ingest-dir drop/ --base-folder / --dry-run</code></pre>
+<p>Progress on the <strong>Ingestion</strong> Grafana dashboard:</p>
+<ul>
+<li>queue depth</li>
+<li>throughput MB/s</li>
+<li>parse failures by mime type</li>
+<li>top failing documents by error code</li>
+</ul>
+<h3>9.4 Dedupe</h3>
+<p>SHA-256 of the file contents is the deduplication key. Same file to same folder → HTTP 409 with the existing <code>doc_id</code>; no re-parse, no re-embed. Same file to a different folder is a new document (different ACL).</p>
+<h3>9.5 Versioning</h3>
+<p>Uploading a same-name file with a different SHA-256 creates a new <code>doc_id</code> and marks the previous one <code>superseded</code>. The old chunks are dropped from the index; the old bytes live in MinIO under <code>raw/{old_id}/…</code> for 30 days.</p>
+<h3>9.6 Reindexing</h3>
+<p>Needed when:</p>
+<ul>
+<li>Chunking config changed (<code>CHUNK_MAX_TOKENS</code>, <code>PRESERVE_TABLES</code>, etc.).</li>
+<li>Parser upgrade that is expected to improve quality (run <code>scripts/eval.py</code> to measure).</li>
+<li>A source file was mutated in place (rare; prefer versioning).</li>
+</ul>
+<pre><code>rag-admin docs reindex &lt;doc_id&gt;
+rag-admin docs reindex --folder /qms/normen
+rag-admin docs reindex --all --confirm             # minutes to hours</code></pre>
+<h3>9.7 Deletion</h3>
+<ul>
+<li><strong>Soft delete</strong> (default): marks <code>superseded</code>, removes from index; bytes kept 30 days in MinIO.</li>
+<li><strong>Hard delete</strong>: <code>--hard</code> flag, requires <code>ADMIN_CONFIRM=yes</code> env to run. Deletes bytes + all rows + all Qdrant points. Irreversible.</li>
+</ul>
+<h3>9.8 Failed ingestions</h3>
+<ul>
+<li>Password-protected PDFs: error message points to this; owner must provide an unlocked copy or admin enables <code>PDF_UNLOCK_ATTEMPTS=true</code> (empty-password attempt only).</li>
+<li>Docling parse errors: <code>PARSER_FALLBACK=pymupdf</code> re-runs through a lightweight text path for that doc only. Quality degrades; document it.</li>
+<li>Oversized files: increase <code>INGEST_MAX_BYTES</code> but monitor worker RAM.</li>
+</ul>
+<hr>
+<h2>10. Retrieval behaviour and tuning</h2>
+<h3>10.1 The four query classes</h3>
+<table><thead><tr><th>Class</th><th>Example</th><th>Path</th><th>LLM tier</th></tr></thead><tbody><tr><td>Lookup</td><td>"Welche Norm gilt für Typ-B-Schränke?"</td><td>Hybrid + rerank</td><td>Gemma 2 9B</td></tr><tr><td>Extraction</td><td>"Liste alle Lieferfristen aus Angebot-2024-09.pdf."</td><td>Hybrid + rerank, long context</td><td>Qwen 2.5 32B</td></tr><tr><td>Table-math</td><td>"Welches Projekt hatte 2024 die höchste Marge?"</td><td>Parallel SQL + hybrid for context</td><td>Qwen 2.5 32B</td></tr><tr><td>Synthesis</td><td>"Fasse unsere Position zu Thema X über alle QMS-Dokumente."</td><td>Hybrid + rerank top 20, map-reduce</td><td>Llama 3.3 70B</td></tr></tbody></table>
+<p>The classifier is a one-shot Gemma 9B call with a versioned prompt. Langfuse records the classification + confidence for every query — monitor drift on the Quality dashboard.</p>
+<h3>10.2 Retrieval algorithm (short version)</h3>
+<pre><code>classify → optional rewrite (HyDE/paraphrase x2)
+→ embed(query) dense + sparse
+→ Qdrant prefetch: dense top 50 + sparse top 50, both with ACL filter
+→ RRF fusion → top 50
+→ TEI rerank → top 12
+→ (if table-math) SQL branch in parallel: LLM → duckdb-api → rows
+→ build prompt (DE/EN/bilingual)
+→ Ollama stream with chosen tier
+→ SSE tokens + citations event
+→ audit + Langfuse trace</code></pre>
+<p>Every Qdrant call copies the same ACL filter — <strong>there is one search code path</strong>. This is a hard rule (<a href=".claude/agents/retrieval-agent.md">retrieval-agent brief</a>).</p>
+<h3>10.3 Knobs</h3>
+<p>Everything in <code>.env</code>:</p>
+<table><thead><tr><th>Knob</th><th>Default</th><th>Effect</th><th>Requires reindex?</th></tr></thead><tbody><tr><td><code>TOP_K_DENSE</code></td><td>50</td><td>Candidates from dense search</td><td>No</td></tr><tr><td><code>TOP_K_SPARSE</code></td><td>50</td><td>Candidates from sparse search</td><td>No</td></tr><tr><td><code>TOP_K_RERANK</code></td><td>12</td><td>Candidates after rerank → prompt</td><td>No</td></tr><tr><td><code>HYBRID_FUSION</code></td><td><code>rrf</code></td><td>or <code>dbsf</code> (Qdrant's Distribution-Based Score Fusion)</td><td>No</td></tr><tr><td><code>QUERY_REWRITE</code></td><td><code>true</code></td><td>Generates 2 paraphrases</td><td>No</td></tr><tr><td><code>CHUNK_MAX_TOKENS</code></td><td>512</td><td>Chunker upper bound</td><td><strong>Yes</strong></td></tr><tr><td><code>CHUNK_MIN_TOKENS</code></td><td>128</td><td>Chunker lower bound</td><td><strong>Yes</strong></td></tr><tr><td><code>PRESERVE_TABLES</code></td><td><code>true</code></td><td>Tables kept whole</td><td><strong>Yes</strong></td></tr><tr><td><code>CITATION_STYLE</code></td><td><code>brackets</code></td><td><code>[1]</code> inline or footnotes</td><td>No</td></tr><tr><td><code>REFUSAL_ON_EMPTY</code></td><td><code>true</code></td><td>Never fabricate; refuse if no chunk supports</td><td>No</td></tr></tbody></table>
+<h3>10.4 Prompt templates</h3>
+<p>Files on disk at <code>config/retrieval/prompts/{de,en,bilingual}.md</code>. Versioned like code. A runtime edit requires a <code>retrieval-api</code> restart — there is no hot admin UI for prompts in v1.</p>
+<p>Every prompt change must show parity or uplift on the 50-query gold set (<code>scripts/eval.py</code>) before it ships. Baselines live in <code>docs/eval/baseline-YYYY-MM-DD.md</code>.</p>
+<h3>10.5 Refusal style</h3>
+<p>If the reranked top-K does not contain a chunk supporting the answer:</p>
+<ul>
+<li>DE: <em>"Ich habe dazu in den zugänglichen Dokumenten keine Information gefunden."</em></li>
+<li>EN: <em>"I didn't find information on that in the documents you can access."</em></li>
+</ul>
+<p>No partial fabrication. No "maybe this, maybe that." The <em>refusal itself</em> is part of the product.</p>
+<hr>
+<h2>11. Model management</h2>
+<h3>11.1 Model catalogue</h3>
+<table><thead><tr><th>Purpose</th><th>Default</th><th>Size</th><th>RAM</th><th>Tier env var</th></tr></thead><tbody><tr><td>Fast LLM</td><td><code>gemma2:9b-instruct-q5_K_M</code></td><td>~7.5 GB</td><td>~7.5 GB</td><td><code>LLM_FAST</code></td></tr><tr><td>Reasoning LLM</td><td><code>qwen2.5:32b-instruct-q4_K_M</code></td><td>~20 GB</td><td>~20 GB</td><td><code>LLM_REASONING</code></td></tr><tr><td>Heavy LLM</td><td><code>llama3.3:70b-instruct-q4_K_M</code></td><td>~40 GB</td><td>~40 GB</td><td><code>LLM_HEAVY</code></td></tr><tr><td>Embedder</td><td><code>bge-m3</code></td><td>~1 GB</td><td>~1 GB</td><td><code>EMBED_MODEL</code></td></tr><tr><td>Reranker</td><td><code>BAAI/bge-reranker-v2-m3</code></td><td>~0.6 GB</td><td>~0.6 GB</td><td><code>RERANK_MODEL</code> (TEI)</td></tr></tbody></table>
+<p>Ollama lazy-loads and evicts based on <code>OLLAMA_MAX_LOADED_MODELS</code> (default 2 on 64 GB). <code>OLLAMA_KEEP_ALIVE=10m</code> means idle models are evicted after 10 minutes.</p>
+<h3>11.2 Router config</h3>
+<p><code>config/retrieval/models.yaml</code> (owned by llm-agent) is the single place to change which model handles which class:</p>
+<pre><code>classes:
+  lookup:     { model: gemma2:9b-instruct-q5_K_M,   max_tokens: 400  }
+  extraction: { model: qwen2.5:32b-instruct-q4_K_M, max_tokens: 1200 }
+  table-math: { model: qwen2.5:32b-instruct-q4_K_M, max_tokens: 800  }
+  synthesis:  { model: llama3.3:70b-instruct-q4_K_M, max_tokens: 1600 }
+embedding: { model: bge-m3, dimensions: 1024 }
+reranker:  { model: BAAI/bge-reranker-v2-m3, server: tei }</code></pre>
+<p>Restart: <code>docker compose restart retrieval-api</code>. No reindex required.</p>
+<h3>11.3 Changing models</h3>
+<pre><code># Pull a new variant
+docker compose exec ollama ollama pull qwen2.5:32b-instruct-q5_K_M
+
+# Edit models.yaml; restart
+docker compose restart retrieval-api
+
+# Evaluate against the gold set
+python scripts/eval.py --gold config/eval/gold-queries.yaml
+
+# Commit whichever has better recall@10 / citation accuracy</code></pre>
+<p>Keep the old model until the new one is validated; it's just disk.</p>
+<h3>11.4 Constrained-host fallback</h3>
+<p><code>LLM_PROFILE=compact</code> drops the heavy tier and routes <code>synthesis</code> to <code>reasoning</code>. Acceptable on 48 GB hosts. Document it; the sizing matrix in <a href="docs/adr/ADR-004-llm-stack.md">ADR-004</a> shows what fits where.</p>
+<h3>11.5 Embedding model change = breaking change</h3>
+<p>Changing <code>EMBED_MODEL</code> triggers:</p>
+<ol>
+<li>A new Qdrant collection (vector shape differs → fresh collection).</li>
+<li>A full reindex job on all documents.</li>
+<li>A MAJOR stack version bump.</li>
+</ol>
+<p>Plan a maintenance window. The new collection is created blue/green; requests keep hitting the old until the reindex finishes, then a cutover flag flips.</p>
+<hr>
+<h2>12. Observability</h2>
+<p>Three signals kept separate:</p>
+<h3>12.1 Langfuse — LLM traces</h3>
+<ul>
+<li>URL: <code>https://$PRIMARY_DOMAIN/langfuse/</code>.</li>
+<li>One parent trace per query with child spans: <code>classify</code>, <code>rewrite</code>, <code>dense_search</code>, <code>sparse_search</code>, <code>rerank</code>, <code>sql_plan</code>, <code>sql_exec</code>, <code>generate</code>.</li>
+<li>Each span carries: model, inputs (truncated), outputs, latency, token counts, cost (unused but emitted).</li>
+<li>Filters for debugging:</li>
+<ul>
+<li><code>latency &gt; 10s</code> — find slow queries</li>
+<li><code>retrieval.rerank_score_top &lt; 0.4</code> — low-confidence retrievals</li>
+<li>by user email — complaint triage</li>
+</ul>
+</ul>
+<p>Replay from Langfuse UI with a different model for A/B comparisons.</p>
+<h3>12.2 Prometheus + Grafana — metrics</h3>
+<p>Four provisioned dashboards:</p>
+<table><thead><tr><th>Dashboard</th><th>Key panels</th></tr></thead><tbody><tr><td>Overview</td><td>QPS, p50/p95 latency by class, error rate, model in use, <code>rag_build_info{version}</code></td></tr><tr><td>Ingestion</td><td>Queue depth, job state pie, throughput MB/s, parse failures by mime type</td></tr><tr><td>Infra</td><td>Container CPU/RAM, disk free, network, docker log volume</td></tr><tr><td>Quality</td><td>(populated from Langfuse exports) rerank uplift, refusal rate, top "no citation" queries</td></tr></tbody></table>
+<p>Key custom metrics:</p>
+<ul>
+<li><code>rag_query_total{class}</code> — counter</li>
+<li><code>rag_query_latency_seconds{phase,class}</code> — histogram</li>
+<li><code>rag_retrieval_hits{source=dense|sparse|rerank}</code> — counter</li>
+<li><code>rag_ingestion_jobs_total{state}</code> — gauge</li>
+<li><code>rag_doc_count</code>, <code>rag_chunk_count</code> — Postgres-backed, refreshed every 60 s</li>
+</ul>
+<h3>12.3 Loki + Promtail — logs</h3>
+<ul>
+<li>All container stdout is shipped to Loki.</li>
+<li>Retention: 14 days INFO, 90 days WARN+.</li>
+<li>Inspect via Grafana Explore → Loki datasource → <code>{container="retrieval-api"}</code>.</li>
+</ul>
+<h3>12.4 Alerts</h3>
+<p>Channels: <code>${DATA_ROOT}/alerts.log</code> always; optional webhook via <code>ALERT_WEBHOOK_URL</code> (Teams, Slack, Mattermost).</p>
+<p>Default rules:</p>
+<table><thead><tr><th>Rule</th><th>Threshold</th><th>Severity</th></tr></thead><tbody><tr><td><code>rag_disk_free_pct &lt; 10</code></td><td>persistent</td><td>critical</td></tr><tr><td>Any container <code>unhealthy</code> for &gt; 5 min</td><td>—</td><td>critical</td></tr><tr><td><code>rag_ingestion_queue_depth &gt; 200</code></td><td>—</td><td>warning</td></tr><tr><td><code>rag_ingestion_queue_depth &gt; 500</code></td><td>—</td><td>critical</td></tr><tr><td>Backup not run in 26 h</td><td>—</td><td>critical</td></tr><tr><td>p95 latency on <code>lookup</code> &gt; 8 s for 10 min</td><td>—</td><td>warning</td></tr></tbody></table>
+<p>Silence: <code>rag-admin alerts silence &lt;rule&gt; --until 2026-05-01</code>.</p>
+<hr>
+<h2>13. Backup and restore</h2>
+<h3>13.1 What is backed up</h3>
+<table><thead><tr><th>Source</th><th>Method</th><th>Typical size</th></tr></thead><tbody><tr><td><code>postgres</code> (rag DB)</td><td><code>pg_dump -Fc</code></td><td>≪ 1 GB</td></tr><tr><td><code>authentik-db</code></td><td><code>pg_dump -Fc</code></td><td>&lt; 100 MB</td></tr><tr><td><code>langfuse-db</code></td><td><code>pg_dump -Fc</code></td><td>1 GB/month growth</td></tr><tr><td><code>minio</code></td><td><code>mc mirror</code></td><td>~= raw corpus size + 5 %</td></tr><tr><td><code>qdrant</code></td><td>snapshot API → tarball</td><td>scales with chunks</td></tr><tr><td><code>duckdb</code></td><td>file copy</td><td>tens of MB</td></tr><tr><td><code>redis</code></td><td>AOF file copy</td><td>&lt; 10 MB</td></tr></tbody></table>
+<p>What is <strong>not</strong> backed up: Ollama model weights (re-pull from source), TEI/Docling caches (regenerated), Loki (ephemeral), Prometheus TSDB (ephemeral), Grafana state (provisioned from config).</p>
+<h3>13.2 Schedule</h3>
+<ul>
+<li>Nightly at <strong>02:15 local</strong> via launchd (macOS) or systemd timer (Linux).</li>
+<li>Retention GFS: <strong>7 daily / 4 weekly / 12 monthly</strong>.</li>
+<li>Output: <code>${BACKUP_ROOT}/YYYY-MM-DD/</code>.</li>
+<li>Optional GPG encryption: set <code>BACKUP_GPG_PASSPHRASE_FILE</code>.</li>
+</ul>
+<h3>13.3 Manual run</h3>
+<pre><code>rag-admin backup run
+ls -lh "$BACKUP_ROOT/$(date +%F)/"</code></pre>
+<h3>13.4 Restore rehearsal (mandatory)</h3>
+<pre><code>make down
+sudo mv /var/lib/reineke /var/lib/reineke.old
+sudo mkdir /var/lib/reineke &amp;&amp; sudo chown "$USER" /var/lib/reineke
+
+rag-admin restore plan  "$BACKUP_ROOT/2026-04-22/"
+rag-admin restore apply "$BACKUP_ROOT/2026-04-22/"
+make up
+make wait-healthy
+rag-admin query "Welche Norm gilt für Typ-B-Schränke?"   # sanity</code></pre>
+<p>Rehearse at least once per major upgrade. A backup that has never been restored is a hope, not a backup.</p>
+<h3>13.5 Encryption at rest</h3>
+<ul>
+<li>macOS: FileVault on the data disk.</li>
+<li>Linux: LUKS for <code>${DATA_ROOT}</code> or ZFS native encryption.</li>
+<li>Backup medium: GPG symmetric with a 25-char random passphrase; passphrase in password manager; path in <code>BACKUP_GPG_PASSPHRASE_FILE</code>.</li>
+</ul>
+<hr>
+<h2>14. Security operations</h2>
+<h3>14.1 Trust model recap</h3>
+<ul>
+<li>Only Caddy binds host ports.</li>
+<li>All service-to-service JWT validation goes through <code>services/common/auth.py</code> (shared library) hitting the Authentik JWKS endpoint. RS256, 2048-bit.</li>
+<li>Internal API calls use <code>INTERNAL_SERVICE_TOKEN</code> (single shared secret rotated with <code>scripts/rotate-secrets.sh</code>).</li>
+<li>Qdrant: API key, held only by the APIs.</li>
+<li>MinIO: IAM keys; browser uses pre-signed URLs.</li>
+<li>Ollama: no auth; relies on network isolation. Never bind to host.</li>
+</ul>
+<h3>14.2 Credential rotation</h3>
+<pre><code>bash scripts/rotate-secrets.sh</code></pre>
+<p>Rotates Postgres passwords, Qdrant API key, MinIO root keys, internal service token. Services restart rolling. Takes &lt; 1 min.</p>
+<p>Authentik admin account: rotate via UI; new recovery secret into password manager.</p>
+<h3>14.3 TLS</h3>
+<p>Caddy auto-rotates the internal CA every 90 days. Distribute the new CA to clients when you rotate:</p>
+<pre><code>scripts/export-ca.sh &gt; ca.crt
+# Distribute via MDM or manual</code></pre>
+<p>For Let's Encrypt via DNS-01, that is in the Caddyfile and handled automatically.</p>
+<h3>14.4 Incident response</h3>
+<table><thead><tr><th>Scenario</th><th>Action</th></tr></thead><tbody><tr><td>Suspected credential leak</td><td><code>rag-admin sessions revoke-all</code>; <code>bash scripts/rotate-secrets.sh</code>; audit last 30 days of <code>audit_log</code> for unusual queries; verify <code>ADMIN_BACKUP_TOKEN</code> has not been used without record</td></tr><tr><td>Host compromise suspected</td><td><code>make down</code>; image disk; restore from last clean backup onto a fresh host; rotate everything before re-onboarding users</td></tr><tr><td>User reports a wrong/leaky answer (PII, other-group content)</td><td>Snapshot the <code>audit_log</code> row + the source Qdrant point; verify the source document's folder ACL; consider a scoped delete or folder move</td></tr></tbody></table>
+<h3>14.5 Audit export (GDPR)</h3>
+<pre><code>rag-admin audit export --from 2026-01-01 --to 2026-03-31 --format csv &gt; q1.csv</code></pre>
+<p>Fields defined in <a href="docs/02_ARCHITECTURE.md">docs/02_ARCHITECTURE.md §4</a>. A data subject request for their own rows: filter by <code>user_id</code>.</p>
+<hr>
+<h2>15. Upgrades</h2>
+<h3>15.1 Patch / minor (<code>v1.0.0</code> → <code>v1.0.1</code>)</h3>
+<pre><code>git fetch &amp;&amp; git checkout v1.0.1
+make pull
+make up
+make wait-healthy</code></pre>
+<p>Read the changelog first for <strong>migration</strong> or <strong>reindex</strong> notes.</p>
+<h3>15.2 Major (<code>v1.x.y</code> → <code>v2.0.0</code>)</h3>
+<pre><code>make backup
+git checkout v2.0.0
+make pull
+rag-admin migrate preflight     # lists what must change
+rag-admin migrate apply         # queues reindex jobs; watch Grafana Ingestion</code></pre>
+<p>Plan a 30–120 min window depending on corpus size. Embedding-model bumps are the most expensive — they trigger a full re-embed of every chunk.</p>
+<h3>15.3 Ollama model upgrades</h3>
+<pre><code>docker compose exec ollama ollama pull qwen2.5:32b-instruct-q5_K_M
+# Edit config/retrieval/models.yaml, then:
+docker compose restart retrieval-api
+python scripts/eval.py           # compare recall + citation accuracy</code></pre>
+<p>Only keep the winner.</p>
+<hr>
+<h2>16. Performance tuning</h2>
+<h3>16.1 Latency budgets</h3>
+<table><thead><tr><th>Class</th><th>Target p95 to last token</th></tr></thead><tbody><tr><td>lookup</td><td>≤ 5 s</td></tr><tr><td>extraction</td><td>≤ 15 s</td></tr><tr><td>table-math</td><td>≤ 20 s</td></tr><tr><td>synthesis</td><td>≤ 60 s</td></tr></tbody></table>
+<p>If you breach, check Langfuse traces for the worst span.</p>
+<h3>16.2 Common tuning moves</h3>
+<table><thead><tr><th>Symptom</th><th>Action</th><th>Cost</th></tr></thead><tbody><tr><td>Lookup p95 drifting to 8 s+</td><td>Lower <code>CHUNK_MAX_TOKENS</code> to 300, reindex; confirm model not evicted</td><td>Reindex time</td></tr><tr><td>Low recall on narrative docs</td><td>Raise <code>CHUNK_MAX_TOKENS</code> to 800, reindex</td><td>Reindex time</td></tr><tr><td>Rerank is slow</td><td>Lower <code>TOP_K_DENSE</code>+<code>TOP_K_SPARSE</code> to 30 each</td><td>Minor recall hit</td></tr><tr><td>Synthesis too slow on M4 Max</td><td><code>LLM_PROFILE=compact</code> (drop 70B)</td><td>Some quality loss on cross-doc synth</td></tr><tr><td>Memory thrash</td><td>Confirm <code>OLLAMA_MAX_LOADED_MODELS=2</code>, <code>OLLAMA_NUM_PARALLEL=1</code></td><td>—</td></tr><tr><td>Qdrant RAM pressure</td><td>Enable/verify <code>quantization.scalar.type=int8</code>; keep <code>on_disk_payload=true</code></td><td>Negligible quality loss</td></tr></tbody></table>
+<h3>16.3 Disk hygiene</h3>
+<ul>
+<li><code>docker system df</code>; weekly <code>docker system prune -f --filter until=168h</code>.</li>
+<li><code>ollama list</code> to inspect cached models; <code>ollama rm &lt;old&gt;</code> to free space.</li>
+<li>Prometheus TSDB retention is 15 days; raise only if you have the disk.</li>
+</ul>
+<hr>
+<h2>17. Troubleshooting</h2>
+<h3>17.1 General method</h3>
+<ol>
+<li><code>docker compose ps</code> — what's unhealthy?</li>
+<li><code>docker compose logs --since 30m &lt;service&gt;</code> — recent errors.</li>
+<li><code>rag-admin status</code> — app-level state (queue depth, doc count, last query).</li>
+<li>Langfuse or Grafana for symptom-specific dashboards.</li>
+</ol>
+<h3>17.2 Symptom → cause table</h3>
+<table><thead><tr><th>Symptom</th><th>Likely cause</th><th>Next step</th></tr></thead><tbody><tr><td>Everything returns "information not available"</td><td>Missing <code>groups</code> claim in JWT</td><td>Authentik OIDC property mappings; <code>retrieval-api</code> logs show <code>groups=[]</code></td></tr><tr><td>Ingestion stuck at <code>parsing</code></td><td>Docling exception (often encrypted PDF)</td><td><code>docker compose logs ingestion-worker</code>; retry after fix</td></tr><tr><td>Ingestion stuck at <code>embedding</code></td><td>Ollama cold-loading or OOM</td><td><code>ollama ps</code>; check RAM; lower <code>OLLAMA_MAX_LOADED_MODELS</code></td></tr><tr><td>"All queries slow"</td><td>Two heavyweight models loaded simultaneously</td><td><code>ollama ps</code>; lower concurrency; reduce <code>OLLAMA_KEEP_ALIVE</code></td></tr><tr><td>Answer cites the wrong chunk</td><td>Retrieval precision issue</td><td>Langfuse trace → rerank scores; if gold chunk absent, re-chunk / widen k; if present, reranker or language mismatch</td></tr><tr><td>Answer in wrong language</td><td>Model language preference</td><td>Add "Answer in &lt;lang&gt;." to system prompt or user toggle</td></tr><tr><td>Citation preview 404</td><td>MinIO pre-signed URL expired (&gt; 1 h)</td><td>Regenerate by re-clicking; if persistent, MinIO down</td></tr><tr><td>ACL leak (user saw other-group chunk)</td><td><strong>Bug</strong>; ACL filter missed on a search path</td><td>Snapshot trace, escalate to retrieval-agent; CRITICAL</td></tr><tr><td>No backup last night</td><td>Backup script failed</td><td>Check <code>alerts.log</code>; missed cron on macOS? `launchctl list \</td><td>grep reineke`</td></tr><tr><td>Qdrant collection corruption</td><td>Rare</td><td>Restore from snapshot (<code>scripts/qdrant-snapshot.sh apply &lt;snap&gt;</code>); fallback is full reindex</td></tr></tbody></table>
+<h3>17.3 Escalation</h3>
+<p>Three repeat failures of the same acceptance criterion during a build → the coordinator halts and escalates. In production, three repeat runbook failures of the same cleanup → file a ticket, do not loop.</p>
+<hr>
+<h2>18. Extending the system</h2>
+<p>Documented extension points. Each is a bounded change with a known migration shape.</p>
+<h3>18.1 New mime type</h3>
+<ol>
+<li>Add parser branch in <code>services/docling/app.py</code>.</li>
+<li>Add fixtures under <code>tests/fixtures/</code>.</li>
+<li>Extend <code>SUPPORTED_MIME_TYPES</code> env in <code>ingestion-api</code>.</li>
+<li>No schema change.</li>
+</ol>
+<h3>18.2 New LLM</h3>
+<pre><code>docker compose exec ollama ollama pull &lt;new-model&gt;
+# Edit config/retrieval/models.yaml
+docker compose restart retrieval-api
+python scripts/eval.py       # measure</code></pre>
+<h3>18.3 New embedder (breaking)</h3>
+<ul>
+<li>New Qdrant collection (different vector shape).</li>
+<li>Blue/green reindex.</li>
+<li>MAJOR version bump.</li>
+<li>Update <code>EMBED_MODEL</code> env + <code>models.yaml.embedding.dimensions</code>.</li>
+</ul>
+<h3>18.4 New ACL predicate (e.g. confidentiality level)</h3>
+<ol>
+<li>Postgres migration: add column on <code>rag.documents</code>.</li>
+<li>Add Qdrant indexed payload field.</li>
+<li>Extend the filter clause in the <em>single</em> retrieval code path.</li>
+<li>Backfill script updates all existing documents.</li>
+<li>Optional: UI exposure in admin view.</li>
+</ol>
+<h3>18.5 New data source (wiki, mail)</h3>
+<ul>
+<li>Write a connector service that produces <code>DoclingDocument</code>-like JSON.</li>
+<li>Submit to <code>ingestion-api</code>'s existing endpoint with <code>folder_path</code> + ACLs.</li>
+<li>No retrieval changes required.</li>
+</ul>
+<h3>18.6 Two-host split (v1.1)</h3>
+<p>When corpus &gt; 5 k docs AND team &gt; 30 active users:</p>
+<ul>
+<li>Worker host: Ollama + TEI + ingestion-worker (heavy CPU/Metal).</li>
+<li>App host: everything else.</li>
+<li>Docker overlay network or WireGuard between them.</li>
+<li><code>scripts/split-to-two-hosts.sh</code> generates the override file. Rehearse in staging.</li>
+</ul>
+<hr>
+<h2>19. Appendices</h2>
+<h3>19.1 Internal port map</h3>
+<table><thead><tr><th>Service</th><th>Port</th><th>Notes</th></tr></thead><tbody><tr><td>caddy</td><td>80, 443 (host)</td><td>Only host-bound</td></tr><tr><td>authentik-server</td><td>9000</td><td>UI + OIDC</td></tr><tr><td>postgres</td><td>5432</td><td><code>rag</code> DB</td></tr><tr><td>redis</td><td>6379</td><td>queue + pub/sub</td></tr><tr><td>minio</td><td>9000 (S3), 9001 (console)</td><td>IAM creds</td></tr><tr><td>qdrant</td><td>6333 (REST), 6334 (gRPC)</td><td>API-key auth</td></tr><tr><td>ollama</td><td>11434</td><td>no auth</td></tr><tr><td>tei-reranker</td><td>8080</td><td>internal</td></tr><tr><td>docling</td><td>8001</td><td>internal</td></tr><tr><td>ingestion-api</td><td>8010</td><td>JWT</td></tr><tr><td>retrieval-api</td><td>8020</td><td>JWT</td></tr><tr><td>duckdb-api</td><td>8030</td><td>JWT</td></tr><tr><td>openwebui</td><td>8080</td><td>proxied</td></tr><tr><td>pipelines</td><td>9099</td><td>internal</td></tr><tr><td>langfuse</td><td>3000</td><td>proxied under <code>/langfuse</code></td></tr><tr><td>prometheus</td><td>9090</td><td>internal</td></tr><tr><td>grafana</td><td>3000</td><td>proxied under <code>/grafana</code></td></tr><tr><td>loki</td><td>3100</td><td>internal</td></tr></tbody></table>
+<h3>19.2 Capacity planning (rule of thumb)</h3>
+<table><thead><tr><th>Corpus</th><th>Qdrant disk</th><th>Qdrant RAM (int8)</th><th>MinIO disk</th><th>Postgres</th></tr></thead><tbody><tr><td>500 docs (~50k chunks)</td><td>~0.5 GB</td><td>~0.2 GB</td><td>raw × 1.05</td><td>~0.5 GB</td></tr><tr><td>2 000 docs (~200k chunks)</td><td>~2 GB</td><td>~0.8 GB</td><td>raw × 1.05</td><td>~1.5 GB</td></tr><tr><td>10 000 docs (~1M chunks)</td><td>~10 GB</td><td>~4 GB</td><td>raw × 1.05</td><td>~8 GB</td></tr><tr><td>50 000 docs (~5M chunks)</td><td>~50 GB</td><td>~20 GB</td><td>raw × 1.05</td><td>~40 GB</td></tr></tbody></table>
+<p>Ollama model ceiling: ~80 GB (all tiers + embedder + reranker). Keep ≥ 20 % headroom on disk.</p>
+<h3>19.3 Useful one-liners</h3>
+<pre><code># Count indexed chunks
+docker compose exec postgres psql -U rag -c "select count(*) from rag.chunks;"
+
+# Top 10 slow queries, last 24h
+docker compose exec postgres psql -U rag -c "
+  select substring(query,1,80), latency_ms
+  from rag.audit_log
+  where ts &gt; now() - interval '24 hours'
+  order by latency_ms desc limit 10;"
+
+# Qdrant sanity
+curl -s -H "api-key: $QDRANT_API_KEY" http://localhost:6333/collections/chunks | jq .
+
+# Active sessions (last 5 min)
+docker compose exec postgres psql -U rag -c "
+  select count(distinct user_id) from rag.audit_log
+  where ts &gt; now() - interval '5 minutes';"
+
+# Who's loaded in Ollama
+docker compose exec ollama ollama ps</code></pre>
+<h3>19.4 Decommissioning</h3>
+<pre><code>make down
+rag-admin backup run                         # final
+# Archive ${BACKUP_ROOT} to cold storage; verify checksum
+# Remove ${DATA_ROOT}
+# Revoke Authentik OIDC clients
+# Remove DNS + TLS cert distribution</code></pre>
+<h3>19.5 When to escalate to the build team</h3>
+<ul>
+<li>Any acceptance-criterion regression after an upgrade (A1.1–A10.1 in <a href="docs/05_IMPLEMENTATION_PLAN.md">docs/05_IMPLEMENTATION_PLAN.md</a>).</li>
+<li>Confirmed ACL leak (critical; must re-open the retrieval-agent lane).</li>
+<li>Docling produces materially worse parses after an upgrade — run <code>scripts/eval.py</code> and attach the diff.</li>
+<li>Proposal to add a new container or change an ADR decision — requires a new ADR superseding the old; do not deploy around it.</li>
+</ul>
+<hr>
+<p><strong>Related documents in this repository:</strong></p>
+<ul>
+<li><a href="TECH_DESCRIPTION.md">TECH_DESCRIPTION.md</a> — conceptual overview, ADR index</li>
+<li><a href="USER_HANDBOOK.md">USER_HANDBOOK.md</a> — handbook for end users</li>
+<li><a href="docs/04_OPERATIONS.md">docs/04_OPERATIONS.md</a> — authoritative operations reference (this handbook is its working companion)</li>
+<li><a href="docs/02_ARCHITECTURE.md">docs/02_ARCHITECTURE.md</a> — authoritative architecture reference</li>
+<li><a href="docs/adr/">docs/adr/</a> — decision rationale</li>
+</ul></body></html>

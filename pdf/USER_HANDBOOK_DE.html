@@ -1,0 +1,408 @@
+<!doctype html><html><head><meta charset='utf-8'><title>Reineke-RAG</title><style>
+@page { size: A4; margin: 20mm 18mm; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body {
+  font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.45;
+  color: #1a1a1a;
+  max-width: none;
+}
+h1, h2, h3, h4 { color: #0b2545; line-height: 1.25; margin-top: 1.2em; }
+h1 {
+  font-size: 22pt;
+  border-bottom: 2px solid #0b2545;
+  padding-bottom: 0.2em;
+  margin-top: 0;
+  page-break-before: always;
+}
+h1:first-of-type { page-break-before: avoid; }
+h2 { font-size: 16pt; border-bottom: 1px solid #c7ccd5; padding-bottom: 0.15em; }
+h3 { font-size: 13pt; }
+h4 { font-size: 11.5pt; color: #2d3e5c; }
+p { margin: 0.6em 0; }
+a { color: #0f6fff; text-decoration: none; }
+code {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  background: #f3f5f8;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+pre {
+  background: #f3f5f8;
+  border: 1px solid #e1e5eb;
+  border-radius: 4px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-size: 9pt;
+  line-height: 1.4;
+  page-break-inside: avoid;
+}
+pre code { background: transparent; padding: 0; font-size: inherit; }
+blockquote {
+  margin: 0.8em 0;
+  padding: 0.2em 0.9em;
+  border-left: 3px solid #0f6fff;
+  background: #f6faff;
+  color: #3a4352;
+}
+ul, ol { margin: 0.5em 0 0.5em 1.4em; padding: 0; }
+li { margin: 0.15em 0; }
+hr { border: 0; border-top: 1px solid #c7ccd5; margin: 1.4em 0; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 9.5pt;
+  margin: 0.8em 0;
+  page-break-inside: avoid;
+}
+th, td {
+  border: 1px solid #c7ccd5;
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+th { background: #eaf0fa; color: #0b2545; font-weight: 600; }
+tr:nth-child(even) td { background: #fafbfc; }
+.cover {
+  text-align: center;
+  margin: 30mm 0 20mm;
+  page-break-after: always;
+}
+.cover h1 { border: 0; font-size: 32pt; margin: 0; page-break-before: avoid; }
+.cover .subtitle { font-size: 13pt; color: #5a6478; margin-top: 6pt; }
+.cover .meta { font-size: 10pt; color: #8791a3; margin-top: 26pt; }
+</style></head><body><div class="cover"><h1>Reineke-RAG</h1><div class="subtitle">Benutzerhandbuch</div><div class="meta">Reineke-RAG &mdash; 2026</div></div><h1>Reineke-RAG — Benutzerhandbuch</h1>
+<blockquote>Dieses Handbuch richtet sich an <strong>Sie, die Nutzerin bzw. den Nutzer von Reineke-RAG</strong>: Anmelden, Fragen zu Firmendokumenten stellen, Antworten mit Zitaten lesen und — sofern Ihre Rolle es erlaubt — Dokumente hochladen.<br><br>Sie brauchen <strong>keine</strong> technischen Vorkenntnisse. Dies ist ein Anwenderhandbuch. Wenn Sie Administratorin sind und Informationen zu Installation, Backup oder Tuning suchen, lesen Sie stattdessen <a href="TECHNICAL_HANDBOOK_DE.md">TECHNICAL_HANDBOOK_DE.md</a>.</blockquote>
+<hr>
+<h2>Inhalt</h2>
+<ol>
+<li><a href="#1-was-reineke-rag-ist--in-einer-minute">Was Reineke-RAG ist — in einer Minute</a></li>
+<li><a href="#2-was-es-tut-und-was-nicht">Was es tut und was nicht</a></li>
+<li><a href="#3-erstmaliges-anmelden">Erstmaliges Anmelden</a></li>
+<li><a href="#4-ein-rundgang-durch-das-fenster">Ein Rundgang durch das Fenster</a></li>
+<li><a href="#5-gute-fragen-stellen">Gute Fragen stellen</a></li>
+<li><a href="#6-eine-antwort-lesen-zitate-zählen">Eine Antwort lesen (Zitate zählen)</a></li>
+<li><a href="#7-sonderfall-tabellen-und-zahlen">Sonderfall: Tabellen und Zahlen</a></li>
+<li><a href="#8-nachfragen-im-gespräch">Nachfragen im Gespräch</a></li>
+<li><a href="#9-dokumente-hochladen">Dokumente hochladen</a></li>
+<li><a href="#10-was-sie-sehen-dürfen--berechtigungen">Was Sie sehen dürfen — Berechtigungen</a></li>
+<li><a href="#11-datenschutz-und-protokollierung">Datenschutz und Protokollierung</a></li>
+<li><a href="#12-wenn-etwas-schiefgeht">Wenn etwas schiefgeht</a></li>
+<li><a href="#13-häufige-fragen">Häufige Fragen</a></li>
+<li><a href="#14-eine-kurze-übung--ihre-erste-gute-frage">Eine kurze Übung — Ihre erste gute Frage</a></li>
+<li><a href="#15-glossar">Glossar</a></li>
+<li><a href="#16-hilfe-bekommen">Hilfe bekommen</a></li>
+</ol>
+<hr>
+<h2>1. Was Reineke-RAG ist — in einer Minute</h2>
+<p>Reineke-RAG ist der <strong>interne Dokument-Assistent Ihres Unternehmens</strong>.</p>
+<p>Sie tippen eine Frage. Das System liest die Word-, PDF- und Excel-Dateien, auf die Sie Zugriff haben, findet die relevanten Stellen und schreibt eine Antwort — in Deutsch oder Englisch — mit <strong>klickbaren Quellen</strong>, damit Sie jede Aussage überprüfen können.</p>
+<p>Es läuft komplett auf Unternehmens-Hardware. <strong>Nichts verlässt das Haus.</strong></p>
+<p>Stellen Sie sich eine Kollegin vor, die alle Dateien gelesen hat, auf die Sie Zugriff haben, und Ihnen immer sagt, wo eine Information steht.</p>
+<hr>
+<h2>2. Was es tut und was nicht</h2>
+<h3>Es tut</h3>
+<ul>
+<li>Fragen zu internen PDF-/Word-/Excel-Dateien beantworten.</li>
+<li>Deutsch <strong>und</strong> Englisch verstehen — fragen Sie in der Sprache, die Ihnen natürlicher fällt.</li>
+<li>Die <strong>Quelle</strong> jeder Aussage zeigen (Dateiname, Seite, eine Vorschau, einen Link zum Öffnen).</li>
+<li>Tabellen numerisch verarbeiten — <em>„Welches Projekt hatte 2024 die höchste Marge?"</em> erzeugt eine wirklich aus Daten errechnete Antwort, keine Schätzung.</li>
+<li>Ihre Zugriffsrechte respektieren. Sie sehen und durchsuchen nur die Ordner, auf die Ihre Gruppe Zugriff hat.</li>
+</ul>
+<h3>Es tut nicht</h3>
+<ul>
+<li>Im Internet recherchieren. Keine Wikipedia, keine News, keine Websuche. Nur Ihre Dateien.</li>
+<li>E-Mails schreiben oder versenden, Kalender bearbeiten, Fremdsysteme ansprechen. Es ist ausschließlich lesend.</li>
+<li>Ihre Dokumente verändern. Es liest sie; die Originale werden nie angefasst.</li>
+<li>Erfinden. Findet kein zugängliches Dokument die Antwort, sagt es das ausdrücklich, anstatt zu raten.</li>
+<li>Sie standardmäßig zwischen Gesprächen erinnern — jedes Chatfenster beginnt frisch, wenn Sie kein laufendes Gespräch fortführen.</li>
+</ul>
+<h3>Wenn Ihre Erwartung außerhalb dieser Grenzen liegt</h3>
+<p>Fragen Sie Ihre Administratorin. In der Regel ist es eines von drei:</p>
+<ul>
+<li><strong>Ein geplantes Feature</strong>, das in der aktuellen Version noch nicht enthalten ist.</li>
+<li><strong>Eine Konfigurationseinstellung</strong>, die der Admin für Sie anpassen kann.</li>
+<li><strong>Absichtlich deaktiviert</strong> aus Sicherheitsgründen (z. B. Dateianhänge im Chat, die Ordner-Berechtigungen umgehen würden).</li>
+</ul>
+<hr>
+<h2>3. Erstmaliges Anmelden</h2>
+<ol>
+<li>Öffnen Sie die URL, die Ihr Administrator geteilt hat. Sie hat meist die Form <code>https://rag.&lt;ihre-firma&gt;.local</code>.</li>
+<li>Sie werden auf die <strong>Single-Sign-On-Seite</strong> (Markenname „Authentik") umgeleitet. Melden Sie sich mit Ihren üblichen Firmendaten an.</li>
+<li>Beim ersten Login werden Sie aufgefordert, Ihr <strong>Passwort zu ändern</strong>. Eventuell registrieren Sie zusätzlich einen <strong>zweiten Faktor</strong> (Authenticator-App) — tun Sie es; es dauert eine Minute.</li>
+<li>Nach dem Login landen Sie im Chat-Fenster.</li>
+</ol>
+<h3>Zertifikatswarnung beim ersten Besuch?</h3>
+<p>Frisch installiert kann Ihr Browser vor dem Zertifikat warnen. Ursache: das System nutzt eine <strong>unternehmensinterne Zertifizierungsstelle</strong>. Ihr Admin wird entweder:</p>
+<ul>
+<li>das CA-Zertifikat auf Ihrem Rechner installieren (danach verschwindet die Warnung), <strong>oder</strong></li>
+<li>Ihnen mitteilen, dass die Warnung einmalig ignoriert werden kann (nur am Arbeitsrechner, niemals im öffentlichen WLAN).</li>
+</ul>
+<p>Sehen Sie diese Warnung auf einem Smartphone oder zuhause, <strong>nicht ignorieren</strong>. Fragen Sie Ihren Admin.</p>
+<hr>
+<h2>4. Ein Rundgang durch das Fenster</h2>
+<p>Vereinfachte Skizze:</p>
+<pre><code>┌────────────────────────────────────────────────────────────┐
+│  Reineke-RAG                         [DE | EN]   [Sie ▾]  │
+├───────────────────────┬────────────────────────────────────┤
+│  Konversationen       │   assistant: ...                   │
+│  + Neu                │                                    │
+│  Heute                │   [1] DIN-18065.pdf · S. 3         │
+│   · Lieferfristen     │   [2] Angebot-2024-09.docx · §2.1  │
+│                       │                                    │
+│  Gestern              │                                    │
+│   · Prozesshandbuch   │                                    │
+│                       │                                    │
+│                       ├────────────────────────────────────┤
+│                       │  ▸ Frage tippen…               ↵   │
+└───────────────────────┴────────────────────────────────────┘</code></pre>
+<h3>Elemente</h3>
+<ul>
+<li><strong>Konversationsliste (links)</strong> — Ihre vergangenen Chats. Ihre Konversationen sind <strong>privat zu Ihrem Konto</strong>; Administratoren sehen Audit-Metadaten (wer hat wann was gefragt), aber standardmäßig nicht das Chat-Transkript.</li>
+<li><strong>+ Neu</strong> — startet eine frische Konversation ohne Erinnerung an frühere. Verwenden Sie dies bei Themenwechsel.</li>
+<li><strong>Sprachumschalter oben rechts (DE | EN)</strong> — schaltet die Systemtexte um. Das System antwortet immer in der Sprache, in der Sie fragen; der Toggle beeinflusst vor allem Ablehnungsmeldungen und einige UI-Texte.</li>
+<li><strong>Zitate ([1], [2], …)</strong> — kleine Klammern innerhalb der Antwort. Ein Klick öffnet eine Vorschau mit Dateinamen, Seite und kurzem Auszug. Zweiter Klick öffnet die ganze Datei.</li>
+<li><strong>Eingabefeld (unten)</strong> — Ihre Frage eingeben; ↵ drückt ab. Streaming: die Antwort erscheint Wort für Wort, während das System sie generiert.</li>
+</ul>
+<h3>Was Sie bewusst nicht sehen</h3>
+<ul>
+<li>Eine Modellauswahl. Das System wählt je nach Fragetyp automatisch das passende Sprachmodell. Sie müssen nichts auswählen.</li>
+<li>Einen Datei-Upload-Button im Chat. Uploads laufen über einen separaten, berechtigungsbewussten Pfad (§ 9).</li>
+</ul>
+<hr>
+<h2>5. Gute Fragen stellen</h2>
+<p>Reineke-RAG ist klug, aber Ihre Frage macht immer noch den Unterschied. Diese Muster führen verlässlich zu besseren Antworten.</p>
+<h3>5.1 Vier Fragetypen, jeweils mit gutem Muster</h3>
+<table><thead><tr><th>Typ</th><th>Gutes Muster</th><th>Deutsches Beispiel</th><th>Englisches Beispiel</th></tr></thead><tbody><tr><td><strong>Lookup</strong> (kurz, spezifisch)</td><td>Thema mit präzisen Begriffen nennen</td><td><em>„Welche Norm gilt für Typ-B-Schränke?"</em></td><td><em>„Which standard applies to type-B cabinets?"</em></td></tr><tr><td><strong>Extraktion</strong> (Liste aus einer Datei holen)</td><td>„Liste / Extrahiere alle X aus Y"</td><td><em>„Liste alle Lieferfristen aus Angebot-2024-09.pdf."</em></td><td><em>„Extract all delivery deadlines from Offer-2024-09.pdf."</em></td></tr><tr><td><strong>Tabelle / Zahl</strong> (Berechnung)</td><td>Datei nennen + was berechnet werden soll</td><td><em>„Welches Projekt in Projekte2024.xlsx hatte die höchste Marge?"</em></td><td><em>„In Projects2024.xlsx, which project had the highest margin?"</em></td></tr><tr><td><strong>Synthese</strong> (über viele Dateien)</td><td>„Fasse zusammen / Vergleiche …"</td><td><em>„Fasse unsere Position zu Thema X über alle QMS-Dokumente zusammen."</em></td><td><em>„Summarise our position on topic X across all QMS documents."</em></td></tr></tbody></table>
+<h3>5.2 Tricks, die wirklich helfen</h3>
+<ul>
+<li><strong>Datei nennen</strong>, wenn Sie sie wissen. Das ist wie ein Cheat-Code — das Retrieval rastet sofort darauf ein.</li>
+<li><strong>Ordner nennen</strong>, wenn Sie nur ungefähr wissen, wo es herkommt („in unseren QMS-Dokumenten…").</li>
+<li><strong>Produktnamen und Bestellnummern wörtlich verwenden.</strong> Das System hat Keyword-Suche; <code>KR-4711-B</code> bringt mehr als <em>„das 4711-Teil"</em>.</li>
+<li><strong>Eine Frage pro Nachricht.</strong> Bei heiklen Themen eine Sache fragen, dann nachsetzen.</li>
+<li><strong>Bei Zahlen: die Rechnung explizit benennen</strong> — „höchste", „Summe", „Mittelwert wo X &gt; 10". Das System schreibt im Hintergrund eine kleine Datenbankabfrage.</li>
+</ul>
+<h3>5.3 Muster, die zu vermeiden sind</h3>
+<ul>
+<li><em>„Was hältst du von …"</em> — wird nichts halten. Es berichtet, was Dokumente sagen, keine Meinungen.</li>
+<li><em>„Erzähl mir alles zu …"</em> — zu breit; Sie erhalten einen rauschigen Mix. Einschränken.</li>
+<li><em>„Recherchiere im Web nach …"</em> — kein Internet, prinzipiell.</li>
+<li><em>„Fasse die letzten fünf hochgeladenen PDFs zusammen"</em> — das System sortiert nicht nach Datum in Alltagsabfragen. Bei Bedarf an den Admin wenden.</li>
+</ul>
+<h3>5.4 Sprachwahl</h3>
+<p>Das System versteht DE und EN. Wenn Sie die <strong>Antwort</strong> in einer bestimmten Sprache wünschen, sagen Sie es:</p>
+<ul>
+<li><em>„Antworte auf Deutsch."</em></li>
+<li><em>„Answer in English."</em></li>
+</ul>
+<p>Oder nutzen Sie den DE | EN-Toggle oben rechts.</p>
+<hr>
+<h2>6. Eine Antwort lesen (Zitate zählen)</h2>
+<p>Jede Tatsachenaussage <em>sollte</em> am Ende eine Klammerzahl wie <strong>[1]</strong> oder <strong>[2]</strong> tragen. Diese sind <strong>klickbare Zitate</strong>.</p>
+<p>Beispiel:</p>
+<blockquote><em>„Die Norm DIN 18065 regelt die Abmessungen [1]. Der Mindestwert beträgt 800 mm [2]."</em></blockquote>
+<p>[1] und [2] sind jeweils unabhängig klickbar. Ein Klick zeigt:</p>
+<ul>
+<li>Den Dateinamen.</li>
+<li>Die Seite oder den Abschnitt.</li>
+<li>Eine rund 240-Zeichen-Vorschau der genauen Textstelle.</li>
+<li>Einen Link, um die gesamte Datei zu öffnen (im Rahmen Ihrer Berechtigungen).</li>
+</ul>
+<h3>Daumenregeln für das Lesen von Antworten</h3>
+<ul>
+<li><strong>Kein Zitat an einer Aussage = schwach werten.</strong> Manchmal setzt das System das Zitat erst am Absatzende statt an jeden Satz. Bei wichtigen Aussagen klicken und prüfen.</li>
+<li><strong>Unterstützt die zitierte Vorschau die Aussage nicht, ist die Antwort falsch.</strong> Selten, aber es kommt vor. Melden Sie es an Ihren Admin — die Logs können die Anfrage rekonstruieren und das System verbessern.</li>
+<li><strong>„Ich habe dazu in den zugänglichen Dokumenten keine Information gefunden."</strong> ist eine <strong>Funktion</strong>, kein Bug. Es heißt: nichts in den Ihnen zugänglichen Dokumenten stützt eine Antwort. Vertrauen Sie dem. Versuchen Sie nicht, die Ablehnung durch Umformulierungen zu umgehen.</li>
+</ul>
+<h3>Zur Sprache</h3>
+<p>Die Antwortsprache entspricht in der Regel Ihrer Frage. Weicht sie ab (Sie fragen auf Deutsch, erhalten Englisch), hängen Sie einfach „Antworte auf Deutsch." an oder nutzen Sie den DE | EN-Toggle.</p>
+<h3>Zur Länge</h3>
+<p>Das System wählt die Länge nach Fragetyp:</p>
+<ul>
+<li>Lookup → kurz, direkt.</li>
+<li>Extraktion → strukturiert, oft als Liste.</li>
+<li>Tabellen-Mathematik → knappe Antwort + (optional) die verwendete SQL-Abfrage.</li>
+<li>Synthese → länger, mehrere Absätze.</li>
+</ul>
+<p>Sie können jederzeit mehr Tiefe anfordern: <em>„Ausführlicher bitte."</em> / <em>„Give me more detail."</em></p>
+<hr>
+<h2>7. Sonderfall: Tabellen und Zahlen</h2>
+<p>Fragen Sie nach einer <strong>Tabelle</strong> oder einer <strong>Zahl</strong>, macht das System etwas anderes:</p>
+<ul>
+<li>Es schreibt eine kleine <strong>SQL-Abfrage</strong> gegen die Daten.</li>
+<li>Es führt die Abfrage sicher aus — Sie können selbst kein SQL laufen lassen; nur das System kann das, und ausschließlich gegen Tabellen, auf die Sie Berechtigung haben.</li>
+<li>Die zurückgegebenen Zeilen werden Teil der Antwort.</li>
+</ul>
+<p>Für Qualitätsprüfung gibt es meist ein „SQL anzeigen"-Panel — klicken Sie es an, um die genaue Abfrage zu sehen. Vergleichen Sie sie mit der Datei, wenn die Zahl seltsam wirkt.</p>
+<p><strong>Warum das wichtig ist:</strong> Ein LLM, das Zellen direkt summieren soll, macht häufig kleine Rechenfehler — insbesondere bei deutschen Dezimaltrennzeichen (<code>,</code> vs. <code>.</code>). Der SQL-Pfad vermeidet das komplett.</p>
+<h3>Typische Tabellen-Fragen</h3>
+<ul>
+<li><em>„Wie hoch ist die Summe der Kosten im Projekt Alpha?"</em></li>
+<li><em>„Welche Position hatte die längste Lieferfrist?"</em></li>
+<li><em>„Durchschnittliche Marge pro Quartal, 2024."</em></li>
+<li><em>„Wie viele Bestellungen über 10 000 € gingen 2024 Q2 an Lieferant X?"</em></li>
+</ul>
+<p><strong>Tipp:</strong> den Dateinamen (<code>.xlsx</code>) möglichst immer nennen — das macht das Routing auf den SQL-Pfad sehr zuverlässig.</p>
+<hr>
+<h2>8. Nachfragen im Gespräch</h2>
+<p>Das System erinnert sich an die aktuelle Konversation. Nach:</p>
+<blockquote><em>„Welche Norm gilt für Typ-B-Schränke?"</em></blockquote>
+<p>können Sie nachfragen:</p>
+<blockquote><em>„Und welche Mindestanforderung an die Tiefe?"</em></blockquote>
+<p>Das System versteht, dass Sie beim selben Thema sind.</p>
+<p><strong>Zurücksetzen:</strong> Klick auf <strong>+ Neu</strong> oben links. Damit beginnt eine frische Konversation ohne Erinnerung. Tun Sie dies bei jedem Themenwechsel — es verhindert, dass das System vom vorherigen Thema verzerrt wird.</p>
+<p>Nachfragen ist nach großen Antworten besonders stark:</p>
+<ul>
+<li><em>„Zeig mir nur Punkt 3."</em></li>
+<li><em>„Übersetze das ins Englische."</em></li>
+<li><em>„Woher stammt diese Zahl genau?"</em></li>
+</ul>
+<hr>
+<h2>9. Dokumente hochladen</h2>
+<p>Nicht jede Nutzerin darf hochladen. Sehen Sie kein <strong>Upload</strong> in der Seitenleiste, ist Ihre Gruppe nicht berechtigt. Bitten Sie Ihren Admin um Zugang zu einem konkreten Ordner.</p>
+<h3>9.1 So laden Sie hoch</h3>
+<ol>
+<li>Klicken Sie <strong>Upload</strong> in der linken Seitenleiste.</li>
+<li>Wählen Sie im Dropdown den <strong>Zielordner</strong>. Es werden nur Ordner angezeigt, auf die Ihre Gruppe Schreibrechte hat — z. B. <code>/qms/normen</code>.</li>
+<li>Ziehen Sie Dateien hinein. Unterstützte Formate: <code>.pdf</code>, <code>.docx</code>, <code>.doc</code>, <code>.xlsx</code>, <code>.xls</code> sowie <code>.pptx</code>, <code>.html</code>, <code>.md</code>, wenn der Admin sie aktiviert.</li>
+<li>Klicken Sie <strong>Ingest</strong>.</li>
+<li>Die Datei erscheint unter „In Progress" mit Live-Status: <code>queued → parsing → embedding → indexed</code>.</li>
+<li>Sobald <strong>indexed</strong>, ist die Datei suchbar. Typische Zeiten:</li>
+<ul>
+<li>Text-PDF: ca. 10 Sekunden pro Seite.</li>
+<li>Gescanntes PDF (OCR nötig): ca. 30 Sekunden pro Seite.</li>
+<li>Word / Excel: meist unter einer Minute.</li>
+</ul>
+</ol>
+<h3>9.2 Was geschieht mit Ihrer Datei</h3>
+<ul>
+<li>Das <strong>Original</strong> wird unverändert und versioniert gespeichert.</li>
+<li>Eine <strong>geparste, gechunkte, suchbare Kopie</strong> wird für das Retrieval angelegt. Beim Klick auf ein Zitat sehen Sie weiterhin das Original.</li>
+<li><strong>Nichts verlässt das Haus.</strong> Kein Cloud-Aufruf, keine API, keine Telemetrie.</li>
+</ul>
+<h3>9.3 Ein Dokument löschen</h3>
+<ul>
+<li>Klicken Sie das Papierkorb-Symbol neben der Datei → bestätigen.</li>
+<li>Standard ist <strong>Soft-Delete</strong>: die Datei wird als „superseded" markiert und verschwindet aus der Suche, die Bytes bleiben 30 Tage für Audit-Rücknahmen erhalten.</li>
+<li>Ein <strong>Hard-Delete</strong> (endgültig) ist Admin-Aktion.</li>
+</ul>
+<h3>9.4 Ein Dokument durch eine neue Version ersetzen</h3>
+<p>Laden Sie eine gleichnamige Datei in denselben Ordner hoch. Hat sich der Inhalt geändert, entsteht eine neue Version; die alte wird als <code>superseded</code> markiert. Ab diesem Moment nutzt der Index die neue Version.</p>
+<h3>9.5 Keine Geheimnisse hochladen</h3>
+<p>Das System protokolliert Anfrage-Metadaten fürs Audit. Es ist für Dokumente gedacht, nicht für Passwörter oder Private Keys. Nutzen Sie dafür Ihren Passwort-Manager. Ordner-ACLs schützen <em>Zugriff</em>, nicht die Geheimhaltung des Dokument-Inhalts — enthält Ihre XLSX ein Geheimnis, kann es jede Person finden, die den Ordner lesen darf.</p>
+<hr>
+<h2>10. Was Sie sehen dürfen — Berechtigungen</h2>
+<p>Jedes Dokument liegt in einem <strong>Ordner</strong> (logisch, z. B. <code>/qms/normen</code> oder <code>/sales/angebote</code>). Jeder Ordner ist mit einer Liste <strong>Gruppen</strong> konfiguriert, die lesen dürfen.</p>
+<h3>Ihr Blick auf die Welt</h3>
+<ul>
+<li>Sie gehören einer oder mehreren Gruppen an (typisch: <code>engineering</code>, <code>sales</code>, <code>qms</code>, <code>finance</code>, <code>hr</code>).</li>
+<li>Sie sehen ein Dokument nur, wenn <strong>mindestens eine</strong> Ihrer Gruppen auf der Freigabeliste des Ordners steht.</li>
+<li>Die Durchsetzung geschieht zur Retrieval-Zeit. Fragen Sie nach etwas aus einem Ordner, auf den Sie keinen Zugriff haben, erhalten Sie die Antwort <strong>„keine Information gefunden"</strong> — <strong>kein Hinweis darauf, dass ein solches Dokument existiert</strong>. Das ist Absicht — es verhindert, dass die bloße Existenz sensibler Dateien durchsickert.</li>
+</ul>
+<h3>Ihre Kollegin sieht evtl. Anderes</h3>
+<p>Zwei Kolleg:innen können dieselbe Frage stellen und unterschiedliche Antworten bekommen, weil sie in unterschiedlichen Gruppen sind. Das ist korrektes Verhalten, kein Bug.</p>
+<h3>Neue Zugänge beantragen</h3>
+<p>Sind Sie der Meinung, auf einen Ordner Zugriff zu brauchen, ihn aber nicht zu haben, sprechen Sie den Admin an. ACL-Änderungen propagieren innerhalb ~1 Minute.</p>
+<hr>
+<h2>11. Datenschutz und Protokollierung</h2>
+<p>Transparenz ist Teil des Designs. Hier exakt, was gespeichert wird und was nicht:</p>
+<h3>Protokolliert (Admin-sichtbare Audit-Spur)</h3>
+<ul>
+<li>Ihre Benutzer-ID.</li>
+<li>Zeitstempel.</li>
+<li>Der <strong>Fragetext</strong>.</li>
+<li>Welche Dokument-IDs das System für Ihre Anfrage abgerufen hat.</li>
+<li>Welches Sprachmodell geantwortet hat.</li>
+<li>Latenz und Token-Zählungen.</li>
+<li>Ein Hash der Antwort (für Manipulations-Erkennung, nicht die Antworttexte selbst).</li>
+</ul>
+<h3>Nicht protokolliert (standardmäßig)</h3>
+<ul>
+<li>Ihre Konversationshistorie über die genannten Metadaten hinaus ist <strong>privat zu Ihrem Konto</strong> im UI.</li>
+<li>Administratoren sehen Audit-Metadaten, aber das Chat-Transkript standardmäßig nicht — es sei denn, Ihre Organisation hat eine andere Policy gewählt. Sprechen Sie bei Bedarf mit Ihrem Admin oder Ihrer Datenschutzbeauftragten.</li>
+</ul>
+<h3>Aufbewahrung</h3>
+<ul>
+<li>Audit-Log: gemäß Unternehmens-Policy, typisch <strong>180 Tage</strong>.</li>
+<li>Chat-Verlauf in Ihrem Konto: solange Sie nicht löschen.</li>
+<li>Originaldokumente: unbefristet, nach Aktenhaltungs-Policy Ihres Unternehmens.</li>
+</ul>
+<h3>Ihre Rechte (DSGVO / BDSG)</h3>
+<p>Sie können beantragen:</p>
+<ul>
+<li>Eine Kopie Ihrer Audit-Einträge.</li>
+<li>Löschung Ihrer Audit-Einträge (vorbehaltlich etwaiger gesetzlicher Aufbewahrungspflicht).</li>
+<li>Eine Liste Ihrer Konversationen.</li>
+</ul>
+<p>Richten Sie das an Ihre <strong>Datenschutzbeauftragte</strong>.</p>
+<h3>Die Offline-Garantie</h3>
+<p>Zur Laufzeit werden keine ausgehenden Netzverbindungen aufgebaut. Das System wurde mit gezogenem Netzkabel geprüft; es degradiert anstandslos und ruft nichts Externes auf. Ihre Anfragen, Ihre Uploads, Ihre Antworten — <strong>bleiben im Haus</strong>.</p>
+<hr>
+<h2>12. Wenn etwas schiefgeht</h2>
+<table><thead><tr><th>Symptom</th><th>Wahrscheinlicher Grund</th><th>Probieren Sie</th></tr></thead><tbody><tr><td><em>„Ich finde ein Dokument nicht, von dem ich weiß, dass es existiert."</em></td><td>Ihre Gruppe steht nicht auf der Freigabeliste des Ordners.</td><td>Admin ansprechen.</td></tr><tr><td><em>„Antwort ist falsch, aber zitiert."</em></td><td>Das abgerufene Stück wirkt verwandt, ist aber nicht relevant; oder das Dokument widerspricht sich selbst.</td><td>Umformulieren; Datei oder Abschnitt nennen; bei Wiederholung melden.</td></tr><tr><td><em>„Antwort hat keine Zitate."</em></td><td>Selten — das Modell hat sie ausgelassen.</td><td>Frage erneut stellen. Bleibt es, melden.</td></tr><tr><td><em>„Antwortet in falscher Sprache."</em></td><td>Modell-Sprach-Erkennung.</td><td>„Antworte auf Deutsch." / „Answer in English." anhängen oder DE</td><td>EN umschalten.</td></tr><tr><td><em>„Eine Tabellen-Zahl wirkt verkehrt."</em></td><td>Der SQL-Pfad hat evtl. die falsche Spalte gewählt.</td><td>„SQL anzeigen" ausklappen, Spaltennamen prüfen. Abweichungen melden.</td></tr><tr><td><em>„Es dauert ewig."</em></td><td>Eine Synthese-Frage kann bis zu einer Minute brauchen.</td><td>Streaming beobachten — es beginnt, bevor es fertig ist. Oder die Frage teilen.</td></tr><tr><td><em>„Ich habe eine Datei hochgeladen, nichts passiert."</em></td><td>Queue ausgelastet oder Parser-Fehler.</td><td>Status anschauen; bei „failed" Info-Symbol lesen; Admin kontaktieren.</td></tr><tr><td><em>„Ich logge mich ein und sehe keine Dokumente."</em></td><td>Ihr Konto hat evtl. noch keine Gruppen.</td><td>Admin um passende Gruppen-Zuordnung bitten.</td></tr></tbody></table>
+<h3>So melden Sie sinnvoll an den Admin</h3>
+<p>Mitschicken:</p>
+<ol>
+<li>Einen <strong>Link zur Konversation</strong> (URL aus der Adresszeile kopieren).</li>
+<li>Die <strong>genaue Frage</strong>, die Sie gestellt haben.</li>
+<li>Die <strong>erwartete</strong> Antwort vs. das, was Sie bekommen haben.</li>
+<li>Nach Möglichkeit: ein <strong>Zitat angeklickt</strong> und notiert, ob die Vorschau die Aussage stützt oder nicht.</li>
+</ol>
+<p>Ihr Admin hat Werkzeuge (Langfuse, Audit-Log), die aus Konversations-URL und Zeitstempel die Anfrage end-to-end rekonstruieren können.</p>
+<hr>
+<h2>13. Häufige Fragen</h2>
+<p><strong>F: Kann ich Reineke-RAG nutzen, um eine Antwort an eine Kundin zu schreiben?</strong> Ja — es ist ein nützliches Werkzeug für Entwürfe. Aber <strong>Sie</strong> sind für das Verantwortlich, was Sie hinausschicken. Prüfen Sie Fakten und Zitate vor jeder Außenkommunikation.</p>
+<p><strong>F: Kann es eine Datei lesen, die ich im Chat anhänge?</strong> Nein. Dateien kommen nur über den offiziellen <strong>Upload</strong>-Weg in das System, der Ordner-Berechtigungen durchsetzt. Chat-Anhänge würden das umgehen — bewusst nicht unterstützt.</p>
+<p><strong>F: Warum hat es eine Antwort verweigert?</strong> Weil nichts in den Ihnen zugänglichen Dokumenten eine Antwort stützt. Das ist beabsichtigt — das System bevorzugt „Ich weiß es nicht" über Erfundenes.</p>
+<p><strong>F: Warum unterscheidet sich die Antwort meines Kollegen bei derselben Frage?</strong> Unterschiedliche Gruppen-Mitgliedschaften → unterschiedliche zugängliche Dokumente → unterschiedliche Zitate → manchmal unterschiedliche Antworten. Designgewollt.</p>
+<p><strong>F: Lernt es aus meinen Korrekturen?</strong> Nicht automatisch. Das Retrieval passt sich standardmäßig nicht an vergangene Anfragen an (Datenschutz-Wahl). Admins können Prompts und Reranker-Gewichte anhand von Audit-Trends tunen; Verbesserungen zeigen sich leise.</p>
+<p><strong>F: Welche Sprachen beherrscht es?</strong> Deutsch und Englisch sind vollständig unterstützt und evaluiert. Andere Sprachen können funktionieren (der Embedder deckt 100+ ab), sind aber nicht formal getestet.</p>
+<p><strong>F: Kann es übersetzen?</strong> Ja. <em>„Übersetze §2.1 von Prozesshandbuch.pdf ins Englische."</em> — es zitiert die Quelle und übersetzt. Für rechtsverbindliche Übersetzungen bleibt eine menschliche Übersetzung sinnvoll.</p>
+<p><strong>F: Kann es einen ganzen Ordner zusammenfassen?</strong> Ja, im Rahmen: <em>„Fasse die Kernpunkte aller Dokumente unter /qms/ zusammen."</em> Sehr breite Fragen werden unpräziser — engere Prompts sind immer besser.</p>
+<p><strong>F: Gibt es eine Größenbeschränkung für Uploads?</strong> Praktisch ja — sehr große gescannte PDFs brauchen lange für OCR. Bei Unsicherheit den Admin fragen.</p>
+<p><strong>F: Kann ich einen Chat exportieren?</strong> Kopieren/Einfügen geht. Formaler Export ist in v1 nicht enthalten.</p>
+<p><strong>F: Sind meine Daten sicher?</strong> Alles läuft auf Firmen-Hardware. Keine Cloud. Die Kommunikation zwischen Ihrem Browser und dem Server ist verschlüsselt (HTTPS). Der Zugriff richtet sich nach Ihrem SSO-Konto und Ihren Gruppen.</p>
+<hr>
+<h2>14. Eine kurze Übung — Ihre erste gute Frage</h2>
+<p>Probieren Sie das zur Eichung:</p>
+<ol>
+<li>Wählen Sie ein <strong>konkretes Dokument</strong>, das Sie kennen — z. B. <code>Angebot-2024-09.pdf</code>.</li>
+<li>Fragen Sie: <em>„Liste alle Lieferfristen aus Angebot-2024-09.pdf."</em></li>
+<li>Lesen Sie die Antwort. Klicken Sie <strong>[1]</strong>. Passt die Vorschau?</li>
+<li>Fragen Sie nach: <em>„Für welche Position ist die Frist am kürzesten und warum?"</em></li>
+<li>Öffnen Sie das Zitat für das „Warum" — steht die Begründung tatsächlich im Dokument?</li>
+</ol>
+<p>Wenn Schritt 3 und 5 beide bestätigen, haben Sie den Dreh raus. Der Rest ist Übung.</p>
+<hr>
+<h2>15. Glossar</h2>
+<ul>
+<li><strong>Chunk</strong> — ein kleines Stück eines Dokuments (ein halber bis ein Seite), das das System intern für die Suche nutzt. Sie sehen Chunks nie direkt; sie sind die Einheit hinter einem Zitat.</li>
+<li><strong>Zitat</strong> — die <code>[1]</code>, <code>[2]</code>-Verweise in der Antwort. Klicken öffnet die Quelle.</li>
+<li><strong>Ordner</strong> — eine logische Kategorie wie <code>/qms/normen</code>. Bestimmt, wer welche Dokumente lesen darf.</li>
+<li><strong>Gruppe</strong> — eine Markierung (z. B. <code>engineering</code> oder <code>qms</code>), die Ihr Admin an Ihr Konto hängt. Bestimmt, was Sie sehen dürfen.</li>
+<li><strong>Hybrid-Retrieval</strong> — das System nutzt gleichzeitig semantische Suche und Stichwortsuche. Deshalb funktionieren <code>KR-4711-B</code> und <em>„Schraubverbindung"</em> beide.</li>
+<li><strong>OCR</strong> — Optical Character Recognition. Wandelt gescannte Textbilder in durchsuchbaren Text zurück.</li>
+<li><strong>Refusal / Ablehnung</strong> — wenn das System <em>„Ich habe dazu in den zugänglichen Dokumenten keine Information gefunden."</em> sagt. Bewusstes Verhalten, kein Fehler.</li>
+<li><strong>SQL-Pfad</strong> — für numerische Fragen schreibt und führt das System eine kleine Datenbankabfrage aus, statt das Sprachmodell rechnen zu lassen.</li>
+<li><strong>SSO</strong> — Single Sign-On. Ein Firmen-Login für alles.</li>
+<li><strong>System-Prompt</strong> — unsichtbare Anweisungen, die das Modell veranlassen, alles zu zitieren und nichts zu fabrizieren. Sie sehen ihn nicht, aber er formt jede Antwort.</li>
+</ul>
+<hr>
+<h2>16. Hilfe bekommen</h2>
+<ul>
+<li><strong>Admin-Kontakt:</strong> steht meist im <strong>ℹ Über</strong>-Panel in der UI; Ihr Admin hinterlegt ihn beim Setup.</li>
+<li><strong>Statusseite:</strong> ein Grafana-Dashboard unter <code>https://rag.&lt;firma&gt;.local/grafana/d/overview</code> zeigt die Systemgesundheit. Admins beobachten es; Endnutzer dürfen reinschauen.</li>
+<li><strong>Bug oder Wunsch:</strong> über das übliche Ticket-System Ihrer Firma. Die <strong>URL der betreffenden Konversation</strong> deutlich dazuschreiben — es beschleunigt die Triage enorm.</li>
+<li><strong>Datenschutzfragen:</strong> an die <strong>Datenschutzbeauftragte</strong>, nicht den IT-Admin.</li>
+</ul>
+<hr>
+<p><em>Willkommen bei Reineke-RAG. Stellen Sie gute Fragen, prüfen Sie die Zitate, und betrachten Sie eine Ablehnung als Information — nicht als Versagen.</em></p>
+<hr>
+<p><strong>Verwandte Dokumente:</strong></p>
+<ul>
+<li><a href="TECH_DESCRIPTION_DE.md">TECH_DESCRIPTION_DE.md</a> — was Reineke-RAG technisch ist</li>
+<li><a href="TECHNICAL_HANDBOOK_DE.md">TECHNICAL_HANDBOOK_DE.md</a> — für Administratoren</li>
+<li><a href="docs/03_HANDBOOK.md">docs/03_HANDBOOK.md</a> — das mitgelieferte Endnutzer-Handbuch (autoritative Quelle für UI-Texte)</li>
+</ul></body></html>

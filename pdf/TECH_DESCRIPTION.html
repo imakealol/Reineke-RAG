@@ -1,0 +1,300 @@
+<!doctype html><html><head><meta charset='utf-8'><title>Reineke-RAG</title><style>
+@page { size: A4; margin: 20mm 18mm; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body {
+  font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.45;
+  color: #1a1a1a;
+  max-width: none;
+}
+h1, h2, h3, h4 { color: #0b2545; line-height: 1.25; margin-top: 1.2em; }
+h1 {
+  font-size: 22pt;
+  border-bottom: 2px solid #0b2545;
+  padding-bottom: 0.2em;
+  margin-top: 0;
+  page-break-before: always;
+}
+h1:first-of-type { page-break-before: avoid; }
+h2 { font-size: 16pt; border-bottom: 1px solid #c7ccd5; padding-bottom: 0.15em; }
+h3 { font-size: 13pt; }
+h4 { font-size: 11.5pt; color: #2d3e5c; }
+p { margin: 0.6em 0; }
+a { color: #0f6fff; text-decoration: none; }
+code {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  background: #f3f5f8;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+pre {
+  background: #f3f5f8;
+  border: 1px solid #e1e5eb;
+  border-radius: 4px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  font-size: 9pt;
+  line-height: 1.4;
+  page-break-inside: avoid;
+}
+pre code { background: transparent; padding: 0; font-size: inherit; }
+blockquote {
+  margin: 0.8em 0;
+  padding: 0.2em 0.9em;
+  border-left: 3px solid #0f6fff;
+  background: #f6faff;
+  color: #3a4352;
+}
+ul, ol { margin: 0.5em 0 0.5em 1.4em; padding: 0; }
+li { margin: 0.15em 0; }
+hr { border: 0; border-top: 1px solid #c7ccd5; margin: 1.4em 0; }
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 9.5pt;
+  margin: 0.8em 0;
+  page-break-inside: avoid;
+}
+th, td {
+  border: 1px solid #c7ccd5;
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+th { background: #eaf0fa; color: #0b2545; font-weight: 600; }
+tr:nth-child(even) td { background: #fafbfc; }
+.cover {
+  text-align: center;
+  margin: 30mm 0 20mm;
+  page-break-after: always;
+}
+.cover h1 { border: 0; font-size: 32pt; margin: 0; page-break-before: avoid; }
+.cover .subtitle { font-size: 13pt; color: #5a6478; margin-top: 6pt; }
+.cover .meta { font-size: 10pt; color: #8791a3; margin-top: 26pt; }
+</style></head><body><div class="cover"><h1>Reineke-RAG</h1><div class="subtitle">Technical Description</div><div class="meta">Reineke-RAG &mdash; 2026</div></div><h1>Reineke-RAG — Technical Description</h1>
+<blockquote>An expert-level technical description of what this repository contains today, what it is designed to become, and how the two are connected.</blockquote>
+<hr>
+<h2>1. What this repository is (today)</h2>
+<p>Reineke-RAG is — <strong>at this point in its lifecycle</strong> — a <strong>blueprint repository</strong>: concept, architecture, decision records, phased implementation plan, subagent briefs, and a skeleton Docker Compose + Makefile + <code>.env</code> template. <strong>No application code ships in the repo yet.</strong> The build is produced by an AI <em>coordinator agent</em> that dispatches work to seven specialist subagents defined in <a href="docs/06_AGENT_BRIEFS.md">docs/06_AGENT_BRIEFS.md</a>.</p>
+<p>The repository is frozen on <strong>two contracts</strong>:</p>
+<ol>
+<li><strong>Concept + ADRs are immutable</strong> without a new ADR superseding them. See <a href="CLAUDE.md">CLAUDE.md</a> § "House rules".</li>
+<li><strong>Ownership boundaries</strong> between subagents are strict; every file has exactly one owner.</li>
+</ol>
+<p>This gives the build reproducibility: any new coordinator started on the same repo sees the same plan, the same acceptance criteria, the same handoff points.</p>
+<h3>1.1 Repository layout</h3>
+<pre><code>/
+├── README.md                     orientation
+├── CLAUDE.md                     project instructions for AI agents
+├── Makefile                      top-level targets (bootstrap, up, pull-models…)
+├── BUILD_LOG.md                  append-only record of build events (coordinator-maintained)
+├── HANDOVER.md                   sign-off template; populated at Phase 10
+├── .gitignore
+├── .claude/
+│   ├── settings.local.json
+│   └── agents/                   eight subagent definitions (.md with frontmatter)
+├── agents/                       (empty; reserved)
+├── config/
+│   ├── .env.example              full environment template
+│   ├── docker-compose.yml        skeleton Compose (25 services, pinned tags, 2 profiles)
+│   └── owner-inputs.yaml.example owner-facing Phase-0 inputs
+└── docs/
+    ├── 01_CONCEPT.md             north-star concept, requirements, tech decisions
+    ├── 02_ARCHITECTURE.md        components, flows, schemas, interfaces
+    ├── 03_HANDBOOK.md            end-user handbook (target behaviour)
+    ├── 04_OPERATIONS.md          admin/IT handbook (target behaviour)
+    ├── 05_IMPLEMENTATION_PLAN.md phased build plan with acceptance criteria
+    ├── 06_AGENT_BRIEFS.md        coordinator + 7 specialist subagent specs
+    └── adr/                      eight accepted Architecture Decision Records</code></pre>
+<h3>1.2 What a reader can currently do</h3>
+<ul>
+<li>Read the full concept and architecture, end-to-end.</li>
+<li>Inspect every pinned container image and its role.</li>
+<li>Reproduce the build by starting the <code>coordinator</code> subagent with <code>config/owner-inputs.yaml</code> populated.</li>
+<li>Review the decision rationale for every significant technical choice (eight ADRs).</li>
+<li><strong>Not</strong> run <code>make up</code> — the concrete service code (<code>services/**</code>) is produced during build, not seeded.</li>
+</ul>
+<hr>
+<h2>2. The target system</h2>
+<p>When fully built (Phase 10 countersigned), Reineke-RAG is a <strong>fully offline, enterprise-grade Retrieval-Augmented Generation stack</strong> for internal Word / PDF / Excel documents in a mixed German + English corpus. Single-host deployment by Docker Compose, designed for an Apple M4 Max 64 GB reference box or Linux + ≥ 24 GB GPU.</p>
+<h3>2.1 Core capabilities</h3>
+<ol>
+<li><strong>Ingests PDF, DOCX, XLSX</strong> — including scanned PDFs (OCR), multi-column layouts, embedded tables, formulas, multi-sheet spreadsheets.</li>
+<li><strong>Answers four query classes</strong>: <code>lookup</code>, <code>extraction</code>, <code>table-math</code>, <code>synthesis</code> — each routed to a different LLM tier.</li>
+<li><strong>Bilingual DE + EN</strong> first-class; embedder and LLMs all strong in both.</li>
+<li><strong>Every answer cites</strong>. The system prompt refuses when no retrieved chunk supports a claim. Citations point to the original file, page, and section.</li>
+<li><strong>ACL-aware</strong>. Every Qdrant/DuckDB query carries a mandatory group filter; the filter is an assertion, not a configuration flag.</li>
+<li><strong>Structure-aware retrieval</strong>. Tables survive ingestion as typed columnar data in DuckDB <em>in addition to</em> being embedded. Table-math queries run real SQL.</li>
+<li><strong>Hybrid retrieval</strong>. Dense + sparse in a single Qdrant call, fused by RRF, reranked by a cross-encoder.</li>
+<li><strong>Offline contract</strong>. No outbound calls at runtime — verified with pfSense / Little Snitch in Phase 9.</li>
+<li><strong>Full trace per query</strong> into Langfuse: classify → rewrite → dense/sparse → rerank → SQL → generate.</li>
+</ol>
+<h3>2.2 What it explicitly does NOT do (v1)</h3>
+<ul>
+<li>No web browsing, no email/Slack ingestion, no agentic workflows beyond optional n8n.</li>
+<li>No HA or clustering (single-node + backups).</li>
+<li>No per-document fine-grained ACLs (folder-level only).</li>
+<li>No languages other than DE + EN in the evaluated matrix.</li>
+<li>No chat-attached file uploads (would bypass ACLs).</li>
+</ul>
+<p>See <a href="docs/01_CONCEPT.md">docs/01_CONCEPT.md</a> §10.</p>
+<hr>
+<h2>3. Technology stack</h2>
+<p>Everything is permissively licensed (Apache 2.0 / MIT / PostgreSQL / BSD-3).</p>
+<table><thead><tr><th>Layer</th><th>Choice</th><th>Version / tag</th><th>Rationale (ADR)</th></tr></thead><tbody><tr><td>Document parsing</td><td><strong>Docling</strong> (IBM)</td><td>3 GB Python image</td><td>Best-in-class tables + layout; Apache 2.0 (<a href="docs/adr/ADR-001-document-parser.md">ADR-001</a>)</td></tr><tr><td>OCR</td><td>EasyOCR (default) / Tesseract <code>deu+eng</code></td><td>in-image</td><td>Swappable via env</td></tr><tr><td>Embeddings (dense + sparse)</td><td><strong>bge-m3</strong></td><td><code>ollama pull bge-m3</code>, 1024-d</td><td>One model, two modes, DE+EN (<a href="docs/adr/ADR-003-embeddings.md">ADR-003</a>)</td></tr><tr><td>Vector DB</td><td><strong>Qdrant</strong></td><td><code>qdrant/qdrant:v1.12.0</code></td><td>Native hybrid + payload filters (<a href="docs/adr/ADR-002-vector-db.md">ADR-002</a>)</td></tr><tr><td>Reranker</td><td><code>BAAI/bge-reranker-v2-m3</code> via <strong>TEI</strong></td><td><code>cpu-1.5</code> (default)</td><td>Multilingual cross-encoder, fast on Metal</td></tr><tr><td>LLM server</td><td><strong>Ollama</strong></td><td><code>ollama/ollama:0.3.12</code></td><td>Apple-Silicon native, lazy-load, OpenAI-compatible</td></tr><tr><td>LLMs (tiered)</td><td>Gemma 2 9B / Qwen 2.5 32B / Llama 3.3 70B</td><td>Q5/Q4 quants</td><td>Route by query class (<a href="docs/adr/ADR-004-llm-stack.md">ADR-004</a>)</td></tr><tr><td>XLSX / tables</td><td><strong>DuckDB</strong></td><td>embedded, file-based</td><td>SQL path for numeric questions (<a href="docs/adr/ADR-006-xlsx-handling.md">ADR-006</a>)</td></tr><tr><td>Object storage</td><td><strong>MinIO</strong></td><td><code>RELEASE.2024-08-03T…</code></td><td>Immutable raw files</td></tr><tr><td>Metadata</td><td><strong>PostgreSQL 16</strong></td><td><code>postgres:16-alpine</code></td><td>Users mirror, folders, docs, chunks, audit, jobs</td></tr><tr><td>Queue</td><td><strong>Redis</strong> + <strong>RQ</strong></td><td><code>redis:7-alpine</code></td><td>Simple ingestion queue</td></tr><tr><td>Identity</td><td><strong>Authentik</strong></td><td><code>2024.8</code></td><td>OIDC + groups + blueprints (<a href="docs/adr/ADR-005-auth.md">ADR-005</a>)</td></tr><tr><td>UI</td><td><strong>Open WebUI</strong> + Pipelines</td><td><code>main</code></td><td>OIDC-ready, custom pipeline bridges to retrieval-api (<a href="docs/adr/ADR-007-ui.md">ADR-007</a>)</td></tr><tr><td>Observability (LLM)</td><td><strong>Langfuse</strong> (self-hosted)</td><td><code>langfuse/langfuse:2.71</code></td><td>Span-per-step tracing</td></tr><tr><td>Observability (infra)</td><td><strong>Prometheus</strong> <code>v2.55.0</code>, <strong>Grafana</strong> <code>11.2.0</code>, <strong>Loki</strong> <code>2.9.10</code></td><td>provisioned JSON dashboards</td><td>Container + host metrics, logs</td></tr><tr><td>Reverse proxy</td><td><strong>Caddy</strong></td><td><code>caddy:2-alpine</code></td><td>Auto-HTTPS via internal CA</td></tr><tr><td>Orchestration (optional, profile <code>automation</code>)</td><td><strong>n8n</strong></td><td><code>1.60.0</code></td><td>Scheduled jobs, folder watcher</td></tr></tbody></table>
+<p><strong>Not adopted as frameworks</strong> (see <a href="docs/adr/ADR-008-framework-vs-services.md">ADR-008</a>): LangChain / LlamaIndex / Haystack. Their chunkers and SQL helpers may be imported as components behind feature flags; the glue is explicit FastAPI code.</p>
+<hr>
+<h2>4. Architecture at a glance</h2>
+<h3>4.1 Component inventory (25 containers at max profile)</h3>
+<table><thead><tr><th>Category</th><th>Services</th></tr></thead><tbody><tr><td>Edge</td><td><code>caddy</code></td></tr><tr><td>Identity</td><td><code>authentik-server</code>, <code>authentik-worker</code>, <code>authentik-db</code>, <code>authentik-redis</code></td></tr><tr><td>Storage</td><td><code>postgres</code>, <code>redis</code>, <code>minio</code>, <code>qdrant</code>, <code>duckdb-api</code> (+ embedded DuckDB file)</td></tr><tr><td>LLM runtime</td><td><code>ollama</code>, <code>ollama-init</code> (one-shot), <code>tei-reranker</code></td></tr><tr><td>Custom services</td><td><code>docling</code>, <code>ingestion-api</code>, <code>ingestion-worker</code>, <code>retrieval-api</code>, <code>duckdb-api</code></td></tr><tr><td>UI</td><td><code>openwebui</code>, <code>pipelines</code></td></tr><tr><td>Observability</td><td><code>langfuse</code>, <code>langfuse-db</code>, <code>prometheus</code>, <code>grafana</code>, <code>loki</code>, <code>promtail</code></td></tr><tr><td>Automation (profile)</td><td><code>n8n</code>, <code>watcher</code></td></tr></tbody></table>
+<p>Host-bound ports: <strong>only 80 and 443</strong> (through Caddy). Everything else speaks over the <code>reineke</code> Docker bridge by service name.</p>
+<h3>4.2 Ingestion data flow</h3>
+<pre><code>File drop → ingestion-api → MinIO (raw/{doc_id}/{filename})
+                          → Postgres rag.documents (status=queued)
+                          → Redis queue (RQ)
+
+Worker   ← Redis
+         → Docling /parse   (DoclingDocument + tables)
+         → HybridChunker    (structure-aware, max 512 tokens)
+         → Ollama embed     (bge-m3 dense, 1024-d)
+         → bge-m3 sparse    (in-process)
+         → Qdrant upsert    (dense + sparse + payload incl. acl_groups)
+         → DuckDB tables    (XLSX sheets, confident PDF tables)
+         → Postgres rag.chunks / rag.tables
+         → Postgres rag.documents (status=indexed)</code></pre>
+<p>Idempotent: <code>(folder_path, sha256)</code> dedupes; failure is transactional (no orphan points).</p>
+<h3>4.3 Retrieval + generation flow</h3>
+<pre><code>Query in Open WebUI → Pipelines → retrieval-api (JWT forwarded)
+
+retrieval-api:
+  1. verify_jwt (JWKS cached)
+  2. principal.groups → ACL filter
+  3. classify(query)  → lookup | extraction | table-math | synthesis  [Gemma 9B]
+  4. (optional) HyDE / paraphrase x2
+  5. embed(q) dense + sparse
+  6. Qdrant prefetch:
+        dense (top 50, filter acl_groups ANY groups)
+        sparse (top 50, same filter)
+        fuse via RRF
+        → top 50
+  7. TEI rerank → top 12
+  8. if table-math: LLM writes SQL → duckdb-api validates + runs on
+                    views.v_&lt;table&gt;_&lt;group_hash&gt;  (ACL baked in)
+  9. build prompt (DE/EN/bilingual), pick LLM tier
+ 10. Ollama stream → SSE tokens
+ 11. SSE citations event (doc_id, chunk_id, page, scores, preview)
+ 12. Postgres rag.audit_log + Langfuse trace</code></pre>
+<p><strong>Anti-hallucination discipline</strong>: if no reranked chunk supports the answer, the system responds in the user's language with an explicit "not found" line. There is no creative-mode toggle.</p>
+<h3>4.4 Storage layout</h3>
+<pre><code>${DATA_ROOT:-/var/lib/reineke}/
+├── postgres/         main app DB (rag schema)
+├── authentik-db/     identity DB
+├── langfuse-db/      tracing DB
+├── redis/            AOF
+├── minio/            raw/{doc_id}/… + export/
+├── qdrant/           vectors + snapshots
+├── duckdb/           reineke.duckdb (single file)
+├── ollama/           model weights (~80 GB if all tiers)
+├── tei/              reranker cache
+├── docling/          OCR models cache
+├── loki/             logs
+└── grafana/          dashboards + state</code></pre>
+<p>All dashboards are provisioned JSON; no admin clicks required to stand them up. All mounts are per-service subdirectories under one root, which keeps the backup/restore script readable.</p>
+<hr>
+<h2>5. Data model (PostgreSQL — schema <code>rag</code>)</h2>
+<p>Seven tables capture every concern that is not a vector or a blob:</p>
+<ul>
+<li><code>rag.users</code> — mirror of Authentik sub/email/groups, refreshed on every JWT validation.</li>
+<li><code>rag.folders</code> — logical folder tree; <code>acl_groups TEXT[]</code> is authoritative.</li>
+<li><code>rag.documents</code> — every ingested file (incl. <code>sha256</code>, <code>status</code>, <code>minio_key</code>, <code>pages</code>).</li>
+<li><code>rag.chunks</code> — admin visibility mirror; vectors live in Qdrant.</li>
+<li><code>rag.tables</code> — one row per DuckDB-registered table (XLSX sheet or PDF table).</li>
+<li><code>rag.audit_log</code> — every retrieval-api query: user, class, retrieved doc ids, SQL (if any), LLM, tokens, latency, answer hash, Langfuse trace ref.</li>
+<li><code>rag.jobs</code> — RQ mirror for the admin UI (ephemeral state becomes persistent).</li>
+</ul>
+<p>See <a href="docs/02_ARCHITECTURE.md">docs/02_ARCHITECTURE.md §4</a> for the DDL.</p>
+<hr>
+<h2>6. Security and ACL model</h2>
+<p>Four pillars:</p>
+<ol>
+<li><strong>Identity</strong>: Authentik (OIDC, RS256 / 2048-bit, access token 15 min, refresh 24 h). Groups are the unit of authorisation.</li>
+<li><strong>Trust boundary</strong>: Caddy is the only host-exposed surface. Service-to-service uses either bearer JWT (Authentik) or a shared <code>INTERNAL_SERVICE_TOKEN</code>.</li>
+<li><strong>ACL enforcement</strong>: <code>acl_groups</code> is an indexed payload field on every Qdrant point. Every search carries a mandatory <code>payload.acl_groups ANY user.groups</code> filter. DuckDB exposes per-group-hash views; the <code>duckdb-api</code> parses the generated SQL, rejects anything but <code>SELECT</code>, and executes only against the ACL view.</li>
+<li><strong>Audit</strong>: every query (hashed answer included) lands in <code>rag.audit_log</code>. Authentik login events go to Loki. GDPR export is <code>rag-admin audit export --format csv</code>.</li>
+</ol>
+<p>Escape hatch: a long-lived, randomly-rotated <code>ADMIN_BACKUP_TOKEN</code> grants admin access when Authentik itself is down. Logged loudly when used.</p>
+<hr>
+<h2>7. LLM routing (ADR-004)</h2>
+<p>A YAML router config consumed by <code>retrieval-api</code>:</p>
+<pre><code>classes:
+  lookup:     { model: gemma2:9b-instruct-q5_K_M,   max_tokens: 400  }
+  extraction: { model: qwen2.5:32b-instruct-q4_K_M, max_tokens: 1200 }
+  table-math: { model: qwen2.5:32b-instruct-q4_K_M, max_tokens: 800  }
+  synthesis:  { model: llama3.3:70b-instruct-q4_K_M, max_tokens: 1600 }
+embedding: { model: bge-m3, dimensions: 1024 }
+reranker:  { model: BAAI/bge-reranker-v2-m3, server: tei }</code></pre>
+<p>Resource profile on the M4 Max 64 GB reference box:</p>
+<table><thead><tr><th>Model</th><th>Quant</th><th>RAM approx</th><th>Role</th><th>Avg wall-time first token</th></tr></thead><tbody><tr><td>Gemma 2 9B</td><td>Q5_K_M</td><td>7.5 GB</td><td>fast path, classifier</td><td>≤ 2 s</td></tr><tr><td>Qwen 2.5 32B</td><td>Q4_K_M</td><td>20 GB</td><td>reasoning, extraction, table-math</td><td>≤ 6 s</td></tr><tr><td>Llama 3.3 70B</td><td>Q4_K_M</td><td>40 GB</td><td>synthesis (rarely loaded)</td><td>≤ 20 s</td></tr><tr><td>bge-m3</td><td>–</td><td>1 GB</td><td>dense + sparse embed</td><td>–</td></tr><tr><td>bge-reranker-v2-m3</td><td>–</td><td>0.6 GB</td><td>reranker (TEI)</td><td>p95 ≤ 500 ms / 12 candidates</td></tr></tbody></table>
+<p><code>OLLAMA_MAX_LOADED_MODELS=2</code> on Apple Silicon keeps Metal from thrashing. A <code>LLM_PROFILE=compact</code> fallback drops the heavy tier entirely.</p>
+<hr>
+<h2>8. Observability</h2>
+<p>Three separate signals, kept separate on purpose:</p>
+<ul>
+<li><strong>Langfuse</strong> — one parent span per query with children for <code>classify</code>, <code>rewrite</code>, <code>dense_search</code>, <code>sparse_search</code>, <code>rerank</code>, <code>sql_plan</code>, <code>sql_exec</code>, <code>generate</code>. Model name, inputs, outputs, latency, token counts attached. Primary debugging surface.</li>
+<li><strong>Prometheus + Grafana</strong> — <code>rag_query_total{class}</code>, <code>rag_query_latency_seconds{phase,class}</code>, <code>rag_retrieval_hits{source}</code>, <code>rag_ingestion_jobs_total{state}</code>, plus container/host metrics. Four provisioned dashboards: Overview / Ingestion / Infra / Quality.</li>
+<li><strong>Loki + Promtail</strong> — stdout of every container. 14-day INFO retention, 90-day WARN+.</li>
+</ul>
+<p>Every custom service exposes <code>/metrics</code> (Prometheus format) and <code>/healthz</code>, and publishes a <code>rag_build_info{version,commit}</code> gauge.</p>
+<hr>
+<h2>9. Build model: coordinator + seven specialists</h2>
+<p>The repo is designed to be <strong>built by AI agents</strong>, not typed in by a single engineer. Eight agent definitions live in <code>.claude/agents/</code>, each with a tight lane:</p>
+<table><thead><tr><th>Agent</th><th>Phase(s)</th><th>Owns (in repo)</th></tr></thead><tbody><tr><td><strong>coordinator</strong></td><td>all</td><td><code>BUILD_LOG.md</code>, <code>HANDOVER.md</code>; dispatches, verifies, never writes app code</td></tr><tr><td><strong>deployment-agent</strong></td><td>1, 9</td><td><code>docker-compose.yml</code>, <code>Makefile</code>, <code>.env.example</code>, Caddyfile, backup/restore scripts</td></tr><tr><td><strong>auth-agent</strong></td><td>2</td><td>Authentik blueprints, <code>services/common/auth.py</code> (JWT lib)</td></tr><tr><td><strong>llm-agent</strong></td><td>3</td><td><code>scripts/pull-models.sh</code>, <code>scripts/smoke-*.sh</code>, <code>config/retrieval/models.yaml</code></td></tr><tr><td><strong>ingestion-agent</strong></td><td>4, 5</td><td><code>services/docling/**</code>, <code>services/ingestion-api/**</code>, <code>services/duckdb-api/**</code>, <code>migrations/**</code></td></tr><tr><td><strong>retrieval-agent</strong></td><td>6, 8</td><td><code>services/retrieval-api/**</code>, <code>config/retrieval/prompts/**</code>, <code>scripts/eval.py</code>, regression tests</td></tr><tr><td><strong>ui-agent</strong></td><td>7</td><td><code>config/openwebui/**</code>, <code>config/pipelines/reineke_rag.py</code></td></tr><tr><td><strong>observability-agent</strong></td><td>9</td><td><code>config/langfuse/**</code>, <code>config/prometheus/**</code>, <code>config/grafana/provisioning/**</code>, <code>config/loki/**</code></td></tr></tbody></table>
+<p>Each phase has <strong>explicit acceptance criteria</strong> (A1.1 through A10.1) that the coordinator verifies by running scripts — never by trusting a subagent's self-report. On failure, it re-dispatches the owning subagent with the failure log. Three strikes escalate to the human owner.</p>
+<p>See <a href="docs/05_IMPLEMENTATION_PLAN.md">docs/05_IMPLEMENTATION_PLAN.md</a> for the phase gates and <a href="docs/06_AGENT_BRIEFS.md">docs/06_AGENT_BRIEFS.md</a> for per-agent contracts.</p>
+<p>Rough budget: ~18 engineer-days of equivalent work; 3–5 wall-clock days for an agent build if the owner is responsive on Phase 0 and Phase 8 loops.</p>
+<hr>
+<h2>10. Architecture Decision Records</h2>
+<p>Eight accepted ADRs freeze the significant choices:</p>
+<table><thead><tr><th>#</th><th>Title</th><th>Key outcome</th></tr></thead><tbody><tr><td><a href="docs/adr/ADR-001-document-parser.md">ADR-001</a></td><td>Docling for document parsing</td><td>One parser, structure preserved, HybridChunker default</td></tr><tr><td><a href="docs/adr/ADR-002-vector-db.md">ADR-002</a></td><td>Qdrant for vector + sparse</td><td>Native hybrid (1.10+), indexed payload filters, int8 quant</td></tr><tr><td><a href="docs/adr/ADR-003-embeddings.md">ADR-003</a></td><td>bge-m3 as the single embedder</td><td>Dense + sparse from one model, 1024-d, DE+EN equal</td></tr><tr><td><a href="docs/adr/ADR-004-llm-stack.md">ADR-004</a></td><td>Tiered Ollama + router</td><td>9B / 32B / 70B routed by query class</td></tr><tr><td><a href="docs/adr/ADR-005-auth.md">ADR-005</a></td><td>Authentik as IdP</td><td>OIDC + groups, blueprint-reproducible</td></tr><tr><td><a href="docs/adr/ADR-006-xlsx-handling.md">ADR-006</a></td><td>DuckDB SQL path</td><td>Numeric answers <em>computed</em>, not generated</td></tr><tr><td><a href="docs/adr/ADR-007-ui.md">ADR-007</a></td><td>Open WebUI + custom pipeline</td><td>One "Reineke-RAG" model entry; built-in upload disabled</td></tr><tr><td><a href="docs/adr/ADR-008-framework-vs-services.md">ADR-008</a></td><td>Thin FastAPI over LangChain/LlamaIndex</td><td>Components yes, frameworks no</td></tr></tbody></table>
+<p>Rule of thumb: if it isn't in an ADR or architecture doc, it is implementation detail and a subagent may choose freely within its lane.</p>
+<hr>
+<h2>11. Why the n8n self-hosted AI starter kit was rejected</h2>
+<p>The n8n starter kit is a useful <em>demo</em>. Reineke-RAG exists because it breaks on real office corpora for four structural reasons (<a href="docs/01_CONCEPT.md">concept §1</a>):</p>
+<ol>
+<li><strong>Flat-text parsing</strong> destroys table structure in PDFs and XLSX.</li>
+<li><strong>Fixed-size chunking</strong> splits mid-table and separates headings from bodies.</li>
+<li><strong>Dense-only retrieval</strong> misses exact terms (part numbers, product codes, German compounds).</li>
+<li><strong>One LLM for every query</strong> — no path that actually computes a sum in a spreadsheet, no synthesis-grade model for cross-doc work.</li>
+</ol>
+<p>Reineke-RAG's design reverses each: structure-aware parsing (Docling) → structure-aware chunking (HybridChunker) → hybrid retrieval + rerank (Qdrant + TEI) → tiered LLM routing with a real SQL branch for tables.</p>
+<p>It additionally adds what the starter kit lacks: <strong>citations</strong>, <strong>folder ACLs</strong>, <strong>audit log</strong>, <strong>offline contract</strong>, <strong>bilingual prompts</strong>, <strong>observability per query</strong>.</p>
+<hr>
+<h2>12. Operational numbers to carry in your head</h2>
+<table><thead><tr><th>Dimension</th><th>Target</th></tr></thead><tbody><tr><td>Corpus supported</td><td>500 – 10 000 docs (growing)</td></tr><tr><td>Ingestion throughput</td><td>100 mixed docs &lt; 20 min on M4 Max</td></tr><tr><td>Retrieval quality gate</td><td>recall@3 ≥ 85 %, recall@10 ≥ 95 % on 50-query gold set</td></tr><tr><td>Citation fidelity</td><td>100 % (zero hallucinated citations allowed)</td></tr><tr><td><code>lookup</code> latency</td><td>p95 ≤ 5 s to last token</td></tr><tr><td><code>synthesis</code> latency</td><td>p95 ≤ 60 s</td></tr><tr><td>Qdrant sizing (1 M chunks, int8)</td><td>~10 GB disk, ~4 GB RAM</td></tr><tr><td>Ollama model ceiling</td><td>~80 GB (all tiers + embed + rerank)</td></tr><tr><td>Backup cadence</td><td>nightly; GFS 7 daily / 4 weekly / 12 monthly</td></tr><tr><td>Admin onboarding from handbook only</td><td>&lt; 30 min</td></tr></tbody></table>
+<hr>
+<h2>13. Forward compatibility</h2>
+<p>Documented extension points so v1.x additions don't force a rewrite:</p>
+<ul>
+<li><strong>New mime types</strong> → add a parser branch in Docling service (PPTX, HTML, MD already near-free).</li>
+<li><strong>New embedder</strong> → new Qdrant collection (vector shape changes), blue/green reindex.</li>
+<li><strong>New ACL predicates</strong> (per-doc tags, confidentiality level) → add payload fields + filter clauses; migration backfills.</li>
+<li><strong>New data sources</strong> (wiki crawl, mail) → normalise to a DoclingDocument-like JSON; submit to <code>ingestion-api</code>.</li>
+<li><strong>Two-host split</strong> (v1.1) when corpus &gt; 5 k docs and team &gt; 30 users — documented path: worker host (Ollama + TEI + ingestion-worker) + app host (everything else) over a Docker overlay or wireguard.</li>
+</ul>
+<p>Backwards compatibility is explicit in the versioning rules: an embedder change or a chunking change that alters boundaries is a breaking (MAJOR) bump; prompt changes and LLM swaps are MINOR/PATCH.</p>
+<hr>
+<h2>14. Summary</h2>
+<p>Reineke-RAG is a <strong>deliberately boring</strong> RAG stack — boring in the complimentary, Dan McKinley sense. Every hot component has a proven counterpart in production somewhere: Postgres, Redis, MinIO, Qdrant, Docker, OIDC. The <em>interesting</em> choices are concentrated where they buy measurable quality: Docling for structure-preserving parsing, bge-m3 for dense+sparse in one model, tiered LLM routing, a real SQL path for tables, a shared reranker. Everything wraps around a single offline contract and a mandatory ACL filter.</p>
+<p>The repository today is the blueprint. The stack is instantiated by an agent build that the repo itself orchestrates.</p>
+<hr>
+<p><strong>For the current repository state</strong>, read in order:</p>
+<ol>
+<li><a href="README.md">README.md</a> — orientation</li>
+<li><a href="docs/01_CONCEPT.md">docs/01_CONCEPT.md</a> — the "why"</li>
+<li><a href="docs/02_ARCHITECTURE.md">docs/02_ARCHITECTURE.md</a> — the "how"</li>
+<li><a href="docs/adr/">docs/adr/</a> — the "why not X"</li>
+<li><a href="docs/05_IMPLEMENTATION_PLAN.md">docs/05_IMPLEMENTATION_PLAN.md</a> — the build schedule</li>
+</ol>
+<p><strong>To use the finished stack</strong> → see <a href="USER_HANDBOOK.md">USER_HANDBOOK.md</a>. <strong>To run the finished stack</strong> → see <a href="TECHNICAL_HANDBOOK.md">TECHNICAL_HANDBOOK.md</a>.</p></body></html>

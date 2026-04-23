@@ -1,0 +1,42 @@
+.env
+.env.local
+config/owner-inputs.yaml
+data/
+/data/
+/var/lib/reineke/
+backups/
+
+# language/tool noise
+__pycache__/
+*.pyc
+.venv/
+.direnv/
+.mypy_cache/
+.ruff_cache/
+.idea/
+.vscode/settings.json
+
+# build artefacts
+services/*/build/
+services/*/dist/
+*.egg-info/
+
+# logs
+*.log
+alerts.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# backups
+*.tar.gz
+*.tar.gz.gpg
+*.dump
+
+# model caches (should live under DATA_ROOT not the repo)
+*.gguf
+*.safetensors
