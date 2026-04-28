@@ -1,0 +1,11 @@
+[Unit]
+Description=Reineke-RAG nightly backup timer
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=15min
+Unit=reineke-rag-backup.service
+
+[Install]
+WantedBy=timers.target
