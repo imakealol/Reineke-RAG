@@ -1,6 +1,8 @@
 .env
 .env.local
 config/owner-inputs.yaml
+# Rendered templates (secrets substituted from .env)
+config/prometheus/prometheus.yml
 data/
 /data/
 /var/lib/reineke/
@@ -31,6 +33,7 @@ Thumbs.db
 
 # Claude Code local settings
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # backups
 *.tar.gz
@@ -40,3 +43,4 @@ Thumbs.db
 # model caches (should live under DATA_ROOT not the repo)
 *.gguf
 *.safetensors
+.doc_venv/

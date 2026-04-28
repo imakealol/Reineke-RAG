@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Mandanten · Reineke-RAG Admin{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h3 m-0">Mandanten &amp; Projekte</h1>
+  <button class="btn btn-sm btn-outline-secondary"
+          hx-get="/admin/api/tenants"
+          hx-target="#tenants-panel"
+          hx-swap="innerHTML">
+    Aktualisieren
+  </button>
+</div>
+
+<div id="tenants-panel"
+     hx-get="/admin/api/tenants"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  <p class="text-secondary">Lade…</p>
+</div>
+{% endblock %}

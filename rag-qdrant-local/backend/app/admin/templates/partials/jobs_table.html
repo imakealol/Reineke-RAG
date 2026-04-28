@@ -1,0 +1,57 @@
+{% if not jobs %}
+<div class="alert alert-info m-0">Noch keine Ingest-Läufe protokolliert.</div>
+{% else %}
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive">
+    <table class="table table-sm table-hover m-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>Gestartet</th>
+          <th>Mandant</th>
+          <th>Projekt</th>
+          <th>Pfad</th>
+          <th class="text-center">Status</th>
+          <th class="text-end">Gefunden</th>
+          <th class="text-end">Indiziert</th>
+          <th class="text-end">Unverändert</th>
+          <th class="text-end">Fehler</th>
+          <th class="text-end">Chunks</th>
+          <th>Beendet</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for j in jobs %}
+        <tr>
+          <td class="small text-secondary">{{ j.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+          <td>{{ j.tenant }}</td>
+          <td>{{ j.project }}</td>
+          <td class="text-truncate small" style="max-width: 22rem;" title="{{ j.source_path }}">{{ j.source_path }}</td>
+          <td class="text-center">
+            {% set badge_cls = {
+              'completed': 'text-bg-success',
+              'running': 'text-bg-warning',
+              'failed': 'text-bg-danger',
+            }.get(j.status, 'text-bg-secondary') %}
+            <span class="badge {{ badge_cls }}">{{ j.status }}</span>
+          </td>
+          <td class="text-end">{{ j.files_found }}</td>
+          <td class="text-end">{{ j.files_indexed }}</td>
+          <td class="text-end">{{ j.files_skipped }}</td>
+          <td class="text-end {% if j.files_failed %}text-danger fw-semibold{% endif %}">{{ j.files_failed }}</td>
+          <td class="text-end">{{ j.chunks_created }}</td>
+          <td class="small text-secondary">
+            {% if j.completed_at %}{{ j.completed_at.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}—{% endif %}
+          </td>
+        </tr>
+        {% if j.error_message %}
+        <tr>
+          <td colspan="11" class="small text-danger ps-4">↳ {{ j.error_message }}</td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<p class="small text-secondary mt-2 mb-0">Zeige bis zu 200 letzte Läufe.</p>
+{% endif %}

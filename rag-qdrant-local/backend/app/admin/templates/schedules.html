@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Zeitplan · Reineke-RAG Admin{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Auto-Ingest · Zeitplan</h1>
+<p class="text-secondary">
+  Pro Eintrag wird der angegebene Pfad einmal täglich zur konfigurierten
+  Uhrzeit gescannt und ingested. Pfade müssen unter einem
+  <code>ALLOWED_BASE_PATHS</code>-Eintrag liegen. Standard: <strong>23:59 UTC</strong>.
+</p>
+
+<div class="row g-4">
+  <div class="col-12 col-xl-5">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-body fw-semibold">Neuer Zeitplan</div>
+      <div class="card-body">
+        <form hx-post="/admin/api/schedules"
+              hx-target="#schedules-list"
+              hx-swap="innerHTML"
+              hx-on::after-request="if(event.detail.successful) this.reset()">
+          <div class="mb-2">
+            <label class="form-label small text-secondary mb-1">Mandant</label>
+            <input class="form-control" name="tenant" required placeholder="z. B. reineke">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small text-secondary mb-1">Projekt</label>
+            <input class="form-control" name="project" required placeholder="z. B. watch">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small text-secondary mb-1">Absoluter Pfad</label>
+            <input class="form-control" name="base_path" required placeholder="/Users/werner/Documents/reineke-watch">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small text-secondary mb-1">Uhrzeit (UTC, HH:MM)</label>
+            <input class="form-control" name="time" type="time" required value="23:59">
+          </div>
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="recursive" id="recursive" checked>
+            <label class="form-check-label" for="recursive">Rekursiv durchsuchen</label>
+          </div>
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="reindex_changed_only" id="reindex_changed_only" checked>
+            <label class="form-check-label" for="reindex_changed_only">Nur geänderte Dateien re-indexieren</label>
+          </div>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" name="enabled" id="enabled" checked>
+            <label class="form-check-label" for="enabled">Aktiv</label>
+          </div>
+          <button class="btn btn-primary" type="submit">Zeitplan anlegen</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-xl-7">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-body fw-semibold d-flex justify-content-between align-items-center">
+        <span>Konfigurierte Zeitpläne</span>
+        <button class="btn btn-sm btn-outline-secondary"
+                hx-get="/admin/api/schedules"
+                hx-target="#schedules-list"
+                hx-swap="innerHTML">Aktualisieren</button>
+      </div>
+      <div class="card-body">
+        <div id="schedules-list"
+             hx-get="/admin/api/schedules"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+          <p class="text-secondary m-0">Lädt …</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

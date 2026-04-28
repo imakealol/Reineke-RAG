@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Übersicht · Reineke-RAG Admin{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h3 m-0">Übersicht</h1>
+  <button class="btn btn-sm btn-outline-secondary"
+          hx-get="/admin/api/health"
+          hx-target="#health-panel"
+          hx-swap="innerHTML">
+    Aktualisieren
+  </button>
+</div>
+
+<div id="health-panel"
+     hx-get="/admin/api/health"
+     hx-trigger="load, every 15s"
+     hx-swap="innerHTML">
+  <p class="text-secondary">Lade Statusinformationen…</p>
+</div>
+{% endblock %}

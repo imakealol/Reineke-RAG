@@ -1,0 +1,125 @@
+{% if not tree %}
+<div class="alert alert-info">Noch keine Dokumente indiziert. Starte mit dem
+  <a href="/admin/ingest" class="alert-link">Ingest-Assistenten</a>.
+</div>
+{% else %}
+<div class="row g-3">
+  {% for tenant, projects in tree.items() %}
+  <div class="col-12 col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-body">
+        <span class="fw-semibold">{{ tenant }}</span>
+        <span class="badge text-bg-secondary ms-2">{{ projects|length }} Projekt(e)</span>
+      </div>
+      <ul class="list-group list-group-flush">
+        {% for p in projects %}
+        {% set pipe_id = 'pipe-' ~ tenant ~ '-' ~ p.project | replace(' ', '-') | replace('/', '-') %}
+        <li class="list-group-item">
+          <div class="d-flex align-items-center">
+            <div class="flex-grow-1">
+              <div>
+                <a href="/admin/dokumente?tenant={{ tenant }}&project={{ p.project }}"
+                   class="text-decoration-none">{{ p.project }}</a>
+              </div>
+              <div class="small text-secondary">
+                {{ p.docs }} Dok., {{ p.chunks }} Chunks
+                {% if p.last_updated %}· zuletzt {{ p.last_updated.strftime('%Y-%m-%d %H:%M') }}{% endif %}
+              </div>
+            </div>
+            <div class="d-flex gap-1">
+              <button type="button"
+                      class="btn btn-sm btn-outline-success js-pipe-toggle"
+                      data-pipe-id="{{ pipe_id }}"
+                      data-tenant="{{ tenant }}"
+                      data-project="{{ p.project }}"
+                      title="Pipe-Function für OpenWebUI anzeigen">Pipe</button>
+              <a class="btn btn-sm btn-outline-primary"
+                 href="/admin/jobs?tenant={{ tenant }}&project={{ p.project }}">Verlauf</a>
+            </div>
+          </div>
+          <div id="{{ pipe_id }}"
+               class="mt-2 d-none js-pipe-panel"
+               data-tenant="{{ tenant }}"
+               data-project="{{ p.project }}">
+            <div class="d-flex justify-content-between align-items-center small mb-1">
+              <span class="text-secondary">
+                Vorkonfigurierte Pipe für
+                <code>{{ tenant }} / {{ p.project }}</code>
+                — <em>Workspace → Functions → +</em> in OpenWebUI einfügen.
+              </span>
+              <div class="d-flex gap-1">
+                <button type="button" class="btn btn-sm btn-primary js-pipe-copy"
+                        data-target="{{ pipe_id }}-code">Kopieren</button>
+                <a class="btn btn-sm btn-outline-secondary"
+                   href="/admin/api/openwebui-pipe.py?tenant={{ tenant|urlencode }}&project={{ p.project|urlencode }}"
+                   download>Datei</a>
+              </div>
+            </div>
+            <pre id="{{ pipe_id }}-code"
+                 class="m-0 p-2 small bg-body-tertiary border rounded js-pipe-code"
+                 style="max-height: 18rem; overflow: auto; white-space: pre-wrap;">Lade…</pre>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+(() => {
+  // Lazy-loads the customised pipe source on first toggle, copies on demand.
+  const cache = new Map();
+
+  document.querySelectorAll('.js-pipe-toggle').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.pipeId;
+      const tenant = btn.dataset.tenant;
+      const project = btn.dataset.project;
+      const panel = document.getElementById(id);
+      if (!panel) return;
+      panel.classList.toggle('d-none');
+      if (panel.classList.contains('d-none')) return;
+
+      const codeEl = document.getElementById(id + '-code');
+      const cacheKey = tenant + '||' + project;
+      if (cache.has(cacheKey)) {
+        codeEl.textContent = cache.get(cacheKey);
+        return;
+      }
+      try {
+        const url = '/admin/api/openwebui-pipe.py?tenant='
+          + encodeURIComponent(tenant) + '&project=' + encodeURIComponent(project);
+        const resp = await fetch(url);
+        const text = await resp.text();
+        cache.set(cacheKey, text);
+        codeEl.textContent = text;
+      } catch (err) {
+        codeEl.textContent = 'Fehler beim Laden: ' + err;
+      }
+    });
+  });
+
+  document.querySelectorAll('.js-pipe-copy').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const targetId = btn.dataset.target;
+      const codeEl = document.getElementById(targetId);
+      if (!codeEl || !codeEl.textContent) return;
+      try {
+        await navigator.clipboard.writeText(codeEl.textContent);
+        const orig = btn.textContent;
+        btn.textContent = 'Kopiert ✓';
+        btn.classList.replace('btn-primary', 'btn-success');
+        setTimeout(() => {
+          btn.textContent = orig;
+          btn.classList.replace('btn-success', 'btn-primary');
+        }, 1500);
+      } catch (err) {
+        alert('Kopieren fehlgeschlagen: ' + err);
+      }
+    });
+  });
+})();
+</script>
+{% endif %}

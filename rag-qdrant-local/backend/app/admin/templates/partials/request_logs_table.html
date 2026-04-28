@@ -1,0 +1,43 @@
+{% if not rows %}
+<div class="alert alert-info m-0">Noch keine API-Aufrufe protokolliert.</div>
+{% else %}
+<div class="card border-0 shadow-sm">
+  <div class="table-responsive" style="max-height: 60vh;">
+    <table class="table table-sm table-hover m-0 align-middle small">
+      <thead class="table-light sticky-top">
+        <tr>
+          <th>Zeitstempel</th>
+          <th>Methode</th>
+          <th>Pfad</th>
+          <th class="text-end">Status</th>
+          <th class="text-end">Dauer</th>
+          <th>Mandant</th>
+          <th>Projekt</th>
+          <th>IP</th>
+          <th>Fehler</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr class="{% if r.status_code >= 500 %}table-danger{% elif r.status_code >= 400 %}table-warning{% endif %}">
+          <td class="text-secondary">{{ r.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+          <td><span class="badge text-bg-light border">{{ r.method }}</span></td>
+          <td class="text-truncate" style="max-width: 22rem;" title="{{ r.path }}{% if r.query_string %}?{{ r.query_string }}{% endif %}">
+            {{ r.path }}{% if r.query_string %}<span class="text-secondary">?{{ r.query_string }}</span>{% endif %}
+          </td>
+          <td class="text-end fw-semibold">{{ r.status_code }}</td>
+          <td class="text-end">{{ r.duration_ms }} ms</td>
+          <td>{{ r.tenant or '' }}</td>
+          <td>{{ r.project or '' }}</td>
+          <td class="text-secondary">{{ r.client_ip or '' }}</td>
+          <td class="text-danger text-truncate" style="max-width: 20rem;" title="{{ r.error_message or '' }}">
+            {{ r.error_message or '' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<p class="small text-secondary mt-2 mb-0">Zeige bis zu 300 letzte Einträge.</p>
+{% endif %}

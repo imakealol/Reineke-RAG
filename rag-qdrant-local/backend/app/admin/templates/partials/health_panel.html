@@ -1,0 +1,60 @@
+<div class="row g-3 mb-4">
+  {% for it in items %}
+  <div class="col-12 col-md-6 col-xl-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body d-flex align-items-center">
+        <span class="status-dot me-3 {{ 'bg-success' if it.ok else 'bg-danger' }}"></span>
+        <div class="flex-grow-1">
+          <div class="fw-semibold">{{ it.name }}</div>
+          <div class="small text-secondary text-break">{{ it.detail }}</div>
+        </div>
+        <span class="badge {{ 'text-bg-success' if it.ok else 'text-bg-danger' }}">
+          {{ 'OK' if it.ok else 'Fehler' }}
+        </span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="row g-3">
+  <div class="col-12 col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-secondary small">Indizierte Dokumente</div>
+        <div class="display-6 fw-semibold">{{ doc_total }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-secondary small">Chunks gesamt</div>
+        <div class="display-6 fw-semibold">{{ chunks_total }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-md-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-secondary small">Mandant/Projekt-Paare</div>
+        <div class="display-6 fw-semibold">{{ tp_count }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-4">
+  <div class="card-body">
+    <div class="text-secondary small mb-2">Erlaubte Quellpfade (<code>ALLOWED_BASE_PATHS</code>)</div>
+    {% if allowed_paths %}
+    <ul class="list-unstyled m-0">
+      {% for p in allowed_paths %}<li><code>{{ p }}</code></li>{% endfor %}
+    </ul>
+    {% else %}
+    <div class="alert alert-warning m-0 mb-0 py-2">Keine Pfade konfiguriert — Ingest ist deaktiviert.</div>
+    {% endif %}
+  </div>
+</div>
+
+<p class="small text-secondary text-end mt-3 mb-0">Zuletzt aktualisiert: <span class="js-now"></span></p>

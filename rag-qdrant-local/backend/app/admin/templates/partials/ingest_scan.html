@@ -1,0 +1,82 @@
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% elif result %}
+<div class="mb-3">
+  <div class="small text-secondary">Scan-Ergebnis für <code>{{ path }}</code></div>
+  <div class="d-flex gap-2 flex-wrap mt-1">
+    <span class="badge text-bg-primary">{{ result.supported|length }} unterstützte Dateien</span>
+    <span class="badge text-bg-secondary">{{ result.unsupported|length }} ignoriert</span>
+    {% for ext, n in result.file_types.items() %}
+    <span class="badge text-bg-light border">{{ ext }} · {{ n }}</span>
+    {% endfor %}
+  </div>
+  {% if skip and (skip.already_indexed + skip.changed + skip.new) > 0 %}
+  <div class="d-flex gap-2 flex-wrap mt-2 small">
+    <span class="badge bg-success-subtle text-success border">
+      {{ skip.already_indexed }} bereits indexiert (werden übersprungen)
+    </span>
+    <span class="badge bg-warning-subtle text-warning border">
+      {{ skip.changed }} geändert (werden neu eingelesen)
+    </span>
+    <span class="badge bg-info-subtle text-info border">
+      {{ skip.new }} neu
+    </span>
+  </div>
+  <div class="form-text mt-1">
+    Heuristik basiert auf Dateigröße + Änderungsdatum. Beim eigentlichen Ingest
+    wird zusätzlich die SHA-256-Prüfsumme verglichen.
+  </div>
+  {% endif %}
+</div>
+
+{% if result.supported %}
+<div class="card border-0 mb-3">
+  <div class="table-responsive" style="max-height: 18rem;">
+    <table class="table table-sm m-0 small">
+      <thead class="table-light sticky-top">
+        <tr>
+          <th>Datei</th>
+          <th>Endung</th>
+          <th class="text-end">Größe</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in result.supported[:200] %}
+        <tr>
+          <td class="text-truncate" style="max-width: 24rem;" title="{{ f.path }}">{{ f.file_name }}</td>
+          <td>{{ f.extension }}</td>
+          <td class="text-end">{{ '%.1f'|format(f.size_bytes / 1024) }} KB</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if result.supported|length > 200 %}
+  <div class="card-footer small text-secondary">… und {{ result.supported|length - 200 }} weitere.</div>
+  {% endif %}
+</div>
+{% endif %}
+
+<form hx-post="/admin/api/ingest/run"
+      hx-target="#ingest-result"
+      hx-swap="innerHTML"
+      hx-indicator="#ingest-spinner">
+  <input type="hidden" name="tenant" value="{{ tenant }}">
+  <input type="hidden" name="project" value="{{ project }}">
+  <input type="hidden" name="path" value="{{ path }}">
+  <input type="hidden" name="recursive" value="{{ 'on' if recursive else '' }}">
+  <div class="form-check mb-2">
+    <input class="form-check-input" type="checkbox" name="reindex_changed_only" id="reindex" checked>
+    <label class="form-check-label" for="reindex">Nur geänderte Dateien neu indizieren</label>
+  </div>
+  <button class="btn btn-success" type="submit"
+          {% if not result.supported %}disabled{% endif %}>
+    Ingest starten
+  </button>
+  <span id="ingest-spinner" class="htmx-indicator ms-2 small text-secondary">
+    Indexierung läuft, bitte warten…
+  </span>
+</form>
+{% else %}
+<p class="text-secondary m-0">Bitte links einen Pfad eingeben und scannen.</p>
+{% endif %}

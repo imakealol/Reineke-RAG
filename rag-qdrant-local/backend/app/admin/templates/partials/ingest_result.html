@@ -1,0 +1,31 @@
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% elif result %}
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-body fw-semibold">3 · Ingest abgeschlossen</div>
+  <div class="card-body">
+    <div class="d-flex gap-2 flex-wrap mb-3">
+      <span class="badge text-bg-primary">Job: <code>{{ result.job_id }}</code></span>
+      <span class="badge text-bg-success">{{ result.indexed_files }} indiziert</span>
+      <span class="badge text-bg-secondary">{{ result.skipped_unchanged }} unverändert</span>
+      <span class="badge {{ 'text-bg-danger' if result.failed_files else 'text-bg-light border' }}">
+        {{ result.failed_files }} fehlgeschlagen
+      </span>
+      <span class="badge text-bg-info">{{ result.chunks_created }} Chunks erzeugt</span>
+    </div>
+
+    {% if result.errors %}
+    <details>
+      <summary class="text-danger small mb-2">{{ result.errors|length }} Fehler anzeigen</summary>
+      <ul class="small">
+        {% for e in result.errors %}
+        <li><code>{{ e.file }}</code> — {{ e.error }}</li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+
+    <a class="btn btn-sm btn-outline-secondary mt-2" href="/admin/jobs">Zum Ingest-Verlauf</a>
+  </div>
+</div>
+{% endif %}

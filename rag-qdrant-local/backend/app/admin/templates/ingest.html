@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Ingest-Assistent · Reineke-RAG Admin{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Ingest-Assistent</h1>
+<p class="text-secondary">
+  Schritt 1: Pfad scannen → Schritt 2: Ingest starten. Pfade müssen unter
+  einem konfigurierten <code>ALLOWED_BASE_PATHS</code>-Eintrag liegen.
+</p>
+
+<div class="row g-4">
+  <div class="col-12 col-xl-5">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-body fw-semibold">1 · Pfad scannen</div>
+      <div class="card-body">
+        <form hx-post="/admin/api/ingest/scan"
+              hx-target="#ingest-scan"
+              hx-swap="innerHTML">
+          <div class="mb-2">
+            <label class="form-label small text-secondary mb-1">Mandant</label>
+            <input class="form-control" name="tenant" id="tenant-input"
+                   list="tenants-list" autocomplete="off"
+                   required placeholder="bestehenden auswählen oder neuen anlegen">
+            <datalist id="tenants-list"></datalist>
+            <div class="form-text">
+              Tippe einen neuen Namen oder wähle aus der Liste der bekannten Mandanten.
+            </div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small text-secondary mb-1">Projekt</label>
+            <input class="form-control" name="project" id="project-input"
+                   list="projects-list" autocomplete="off"
+                   required placeholder="bestehendes wählen oder neues anlegen">
+            <datalist id="projects-list"></datalist>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small text-secondary mb-1">Absoluter Pfad</label>
+            <input class="form-control" name="path" required placeholder="/mnt/rag-data/…">
+          </div>
+          <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" name="recursive" id="recursive" checked>
+            <label class="form-check-label" for="recursive">Rekursiv durchsuchen</label>
+          </div>
+          <button class="btn btn-primary" type="submit">Scannen</button>
+        </form>
+        <script>
+        (async () => {
+          // Populate the tenant + project datalists from /admin/api/tenants.json
+          // and filter projects when a tenant is chosen.
+          let pairs = [];
+          try {
+            const resp = await fetch('/admin/api/tenants.json');
+            pairs = await resp.json();
+          } catch (err) {
+            console.warn('tenants.json fetch failed', err);
+            return;
+          }
+          const tenantsList = document.getElementById('tenants-list');
+          const projectsList = document.getElementById('projects-list');
+          const tenantInput = document.getElementById('tenant-input');
+          const projectInput = document.getElementById('project-input');
+
+          const uniq = arr => Array.from(new Set(arr));
+
+          const renderTenants = () => {
+            tenantsList.innerHTML = '';
+            uniq(pairs.map(p => p.tenant)).sort().forEach(t => {
+              const opt = document.createElement('option');
+              opt.value = t;
+              tenantsList.appendChild(opt);
+            });
+          };
+
+          const renderProjects = () => {
+            const t = tenantInput.value.trim();
+            const filtered = t
+              ? pairs.filter(p => p.tenant === t).map(p => p.project)
+              : pairs.map(p => p.project);
+            projectsList.innerHTML = '';
+            uniq(filtered).sort().forEach(p => {
+              const opt = document.createElement('option');
+              opt.value = p;
+              projectsList.appendChild(opt);
+            });
+          };
+
+          renderTenants();
+          renderProjects();
+          tenantInput.addEventListener('input', renderProjects);
+          tenantInput.addEventListener('change', renderProjects);
+        })();
+        </script>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-xl-7">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-body fw-semibold">2 · Vorschau &amp; Ingest</div>
+      <div class="card-body">
+        <div id="ingest-scan">
+          <p class="text-secondary m-0">Noch kein Scan ausgeführt.</p>
+        </div>
+      </div>
+    </div>
+    <div id="ingest-result" class="mt-3"></div>
+  </div>
+</div>
+{% endblock %}

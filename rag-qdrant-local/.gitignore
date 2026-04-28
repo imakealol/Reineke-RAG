@@ -1,0 +1,16 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+storage/converted/*
+storage/temp/*
+storage/rag.sqlite
+storage/rag.sqlite-*
+!storage/converted/.gitkeep
+!storage/temp/.gitkeep
+.DS_Store

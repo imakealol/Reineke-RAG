@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Logs · Reineke-RAG Admin{% endblock %}
+{% block content %}
+<h1 class="h3 mb-3">Logs</h1>
+
+<ul class="nav nav-tabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-api"
+            type="button" role="tab">API-Aufrufe</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-app"
+            type="button" role="tab">Anwendungslog</button>
+  </li>
+</ul>
+
+<div class="tab-content border border-top-0 rounded-bottom bg-body p-3">
+
+  <!-- ============== API requests ============== -->
+  <div id="tab-api" class="tab-pane fade show active" role="tabpanel">
+    <form class="row g-2 align-items-end mb-3"
+          hx-get="/admin/api/request-logs"
+          hx-target="#request-logs-table"
+          hx-swap="innerHTML"
+          hx-trigger="change, keyup changed delay:400ms">
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-secondary mb-1">Status</label>
+        <select class="form-select form-select-sm" name="status">
+          <option value="">Alle</option>
+          <option value="errors">Nur Fehler (≥ 400)</option>
+          <option value="200">200</option>
+          <option value="400">400</option>
+          <option value="404">404</option>
+          <option value="500">500</option>
+        </select>
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-secondary mb-1">Methode</label>
+        <select class="form-select form-select-sm" name="method">
+          <option value="">Alle</option>
+          <option>GET</option><option>POST</option><option>DELETE</option>
+        </select>
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-secondary mb-1">Mandant</label>
+        <input class="form-control form-control-sm" name="tenant">
+      </div>
+      <div class="col-12 col-md-3 d-flex gap-2">
+        <button type="submit" class="btn btn-sm btn-primary">Filtern</button>
+        <button type="button" class="btn btn-sm btn-outline-success js-toggle-live"
+                data-target="#request-logs-live" data-stream="/admin/api/request-logs/stream"
+                data-mode="api">
+          Live-Tail starten
+        </button>
+      </div>
+    </form>
+
+    <div id="request-logs-live" class="card border-0 shadow-sm mb-3 d-none">
+      <div class="card-header bg-body d-flex justify-content-between">
+        <span class="fw-semibold">Live-Tail</span>
+        <span class="small text-secondary"><span class="js-live-status">verbunden</span></span>
+      </div>
+      <div class="log-stream small font-monospace" data-stream-body></div>
+    </div>
+
+    <div id="request-logs-table"
+         hx-get="/admin/api/request-logs"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+      <p class="text-secondary">Lade…</p>
+    </div>
+  </div>
+
+  <!-- ============== App log ============== -->
+  <div id="tab-app" class="tab-pane fade" role="tabpanel">
+    <p class="text-secondary small">
+      Tail der laufenden Anwendung — neue Zeilen ab dem Moment, in dem du diesen Tab öffnest.
+      Datei: <code>storage/logs/app.log</code> (rotierend, 5×5&nbsp;MB).
+    </p>
+    <div class="d-flex gap-2 mb-2">
+      <button type="button" class="btn btn-sm btn-outline-success js-toggle-live"
+              data-target="#app-log-live" data-stream="/admin/api/app-log/stream"
+              data-mode="app">
+        Live-Tail starten
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-secondary js-clear"
+              data-target="#app-log-live">Leeren</button>
+    </div>
+    <div id="app-log-live" class="card border-0 shadow-sm">
+      <div class="card-body p-0">
+        <pre class="log-stream small font-monospace m-0" data-stream-body
+             style="min-height: 24rem; max-height: 60vh; overflow:auto;"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
