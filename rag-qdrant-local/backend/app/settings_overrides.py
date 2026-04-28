@@ -35,20 +35,31 @@ class EditableKey:
     maximum: Optional[float] = None
     choices: Optional[List[str]] = None
     warning: Optional[str] = None  # surfaced in UI ("changing this requires …")
+    # Optional: a relative URL the UI fetches to fill <option>s dynamically.
+    # Endpoint must return JSON `{"options": ["name1", "name2", ...]}`.
+    options_url: Optional[str] = None
 
 
 # Order matters — defines the order in the UI.
 EDITABLE_KEYS: List[EditableKey] = [
     EditableKey(
         "EMBEDDING_MODEL", "str", "Embedding-Modell",
-        help="Name eines in Ollama installierten Embedding-Modells.",
+        help="Wähle eines der in Ollama installierten Embedding-Modelle.",
         warning="Modellwechsel erzeugt Vektoren anderer Dimension — bestehende "
                 "Qdrant-Collection muss neu angelegt und alle Dokumente neu "
                 "ingested werden.",
+        options_url="/admin/api/ollama/models?role=embedding",
     ),
     EditableKey(
-        "CHAT_MODEL", "str", "Chat-Modell",
-        help="Name eines in Ollama installierten Chat-Modells.",
+        "CHAT_MODEL", "str", "Chat-Modell · globaler Fallback",
+        help="Wird verwendet, wenn ein Agent kein eigenes Modell gesetzt hat. "
+             "Per-Agent-Override findest du auf der Agenten-Seite.",
+        options_url="/admin/api/ollama/models?role=chat",
+    ),
+    EditableKey(
+        "OLLAMA_KEEP_ALIVE", "str", "Ollama Keep-Alive",
+        help="Wie lange Ollama Modelle nach dem letzten Request im VRAM hält. "
+             "Format: '5m', '1h', '24h', '-1' (für immer), '0' (sofort entladen).",
     ),
     EditableKey(
         "CHUNK_SIZE", "int", "Chunk-Größe (Zeichen)",
@@ -138,6 +149,12 @@ def _coerce(meta: EditableKey, raw: str) -> Any:
     # str
     if not raw:
         raise ValueError(f"{meta.label}: darf nicht leer sein.")
+    if meta.name == "OLLAMA_KEEP_ALIVE":
+        import re
+        if not re.fullmatch(r"-1|0|\d+[smh]", raw):
+            raise ValueError(
+                f"{meta.label}: Format wie '5m', '1h', '24h', '-1' oder '0' erwartet."
+            )
     return raw
 
 
@@ -231,6 +248,7 @@ def overlay_view() -> List[Dict[str, Any]]:
                 "minimum": meta.minimum,
                 "maximum": meta.maximum,
                 "choices": meta.choices,
+                "options_url": meta.options_url,
                 "value": getattr(settings, meta.name),
                 "overridden": meta.name in overridden,
             }

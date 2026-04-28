@@ -11,7 +11,7 @@ import asyncio
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
@@ -19,11 +19,18 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from ..chat_service import ChatService  # noqa: F401  (kept available for future)
+from ..chat_service import DEFAULT_SYSTEM_PROMPT, ChatService
+from ..system_prompt_store import (
+    SYSTEM_PROMPT_MAX_CHARS,
+    clear_system_prompt,
+    get_system_prompt,
+    has_override as system_prompt_has_override,
+    set_system_prompt,
+)
 from ..config import settings
 from ..database import get_db
 from ..ingestion_service import IngestionService
-from ..models import Document, IngestionJob, IngestSchedule, RequestLog
+from ..models import Document, IngestionJob, IngestSchedule, RequestLog, TenantProjectPrompt
 from ..ollama_client import OllamaClient
 from ..path_security import (
     PathSecurityError,
@@ -31,7 +38,12 @@ from ..path_security import (
     resolve_safe_path,
 )
 from ..qdrant_store import QdrantStore
-from ..schemas import IngestPathRequest, IngestScheduleIn, ScanPathRequest
+from ..schemas import (
+    IngestPathRequest,
+    IngestScheduleIn,
+    PERSONA_PROMPT_MAX_CHARS,
+    ScanPathRequest,
+)
 from ..scheduler_service import scheduler
 from ..settings_overrides import (
     EDITABLE_KEYS,
@@ -140,7 +152,7 @@ async def health_panel(request: Request, db: Session = Depends(get_db)) -> HTMLR
 
 @router.get("/tenants", response_class=HTMLResponse)
 async def tenants_panel(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
-    """Two-level tree: tenant -> projects, with document counts."""
+    """Two-level tree: tenant -> projects, with document counts + persona prompts."""
     rows = db.execute(
         select(
             Document.tenant,
@@ -154,14 +166,26 @@ async def tenants_panel(request: Request, db: Session = Depends(get_db)) -> HTML
         .order_by(Document.tenant, Document.project)
     ).all()
 
+    # Pre-fetch persona prompts + per-agent chat models so we don't hammer
+    # the DB inside the template.
+    config_map: Dict[Tuple[str, str], Dict[str, str]] = {}
+    for p in db.execute(select(TenantProjectPrompt)).scalars().all():
+        config_map[(p.tenant, p.project)] = {
+            "persona_prompt": p.persona_prompt or "",
+            "chat_model": p.chat_model or "",
+        }
+
     tree: Dict[str, List[Dict[str, Any]]] = {}
     for tenant, project, docs, chunks, last_updated in rows:
+        agent_cfg = config_map.get((tenant, project), {})
         tree.setdefault(tenant, []).append(
             {
                 "project": project,
                 "docs": docs,
                 "chunks": chunks,
                 "last_updated": last_updated,
+                "persona_prompt": agent_cfg.get("persona_prompt", ""),
+                "chat_model": agent_cfg.get("chat_model", ""),
             }
         )
 
@@ -592,6 +616,42 @@ async def openwebui_pipe_source(
     )
 
 
+# --- Installed Ollama models (for Konfiguration dropdowns) ----------------
+
+# Substring heuristic — model names that match are treated as embedders.
+_EMBEDDING_HINTS = ("embed", "bge-m3", "bge-large", "nomic-embed", "mxbai")
+
+
+def _is_embedding_model(name: str) -> bool:
+    n = name.lower()
+    return any(hint in n for hint in _EMBEDDING_HINTS)
+
+
+@router.get("/ollama/models")
+async def ollama_models(role: str = Query("all")) -> JSONResponse:
+    """List the locally installed Ollama models, optionally filtered by role.
+
+    role=embedding → only embedders (bge-m3, nomic-embed-text, …)
+    role=chat      → only chat models (everything else)
+    role=all       → all of them
+    """
+    try:
+        names = await OllamaClient().list_models()
+    except Exception as exc:
+        log.warning("ollama list_models failed: %s", exc)
+        names = []
+
+    if role == "embedding":
+        filtered = [n for n in names if _is_embedding_model(n)]
+    elif role == "chat":
+        filtered = [n for n in names if not _is_embedding_model(n)]
+    else:
+        filtered = list(names)
+
+    filtered.sort(key=str.lower)
+    return JSONResponse({"options": filtered})
+
+
 # --- Tiny JSON helper used by the Mandanten select ---------------------------
 
 @router.get("/tenants.json")
@@ -742,3 +802,155 @@ async def schedules_run_now(
         raise HTTPException(status_code=404, detail="Schedule not found")
     scheduler.trigger_now(schedule_id)
     return _render_schedule_table(request, db)
+
+
+# --- Persona prompts (per agent / collection) -------------------------------
+
+@router.post("/agents/{tenant}/{project}/prompt", response_class=HTMLResponse)
+async def agent_prompt_set(
+    tenant: str, project: str, request: Request, db: Session = Depends(get_db)
+) -> HTMLResponse:
+    form = await request.form()
+    raw = (form.get("persona_prompt") or "").strip()
+    if len(raw) > PERSONA_PROMPT_MAX_CHARS:
+        return HTMLResponse(
+            f'<div class="alert alert-danger m-0">'
+            f'Persona-Prompt zu lang ({len(raw)} Zeichen, max '
+            f'{PERSONA_PROMPT_MAX_CHARS}).</div>',
+            status_code=200,
+        )
+
+    row = db.get(TenantProjectPrompt, (tenant, project))
+    if raw:
+        if row is None:
+            db.add(TenantProjectPrompt(tenant=tenant, project=project, persona_prompt=raw))
+        else:
+            row.persona_prompt = raw
+    elif row is not None:
+        # Empty submit clears the override.
+        db.delete(row)
+    db.commit()
+
+    return HTMLResponse(
+        f'<div class="alert alert-success py-1 m-0 small">'
+        f'Persona für <code>{tenant} / {project}</code> '
+        f'{"gespeichert" if raw else "geleert"}.</div>'
+    )
+
+
+@router.get("/agents/{tenant}/{project}/prompt-preview", response_class=HTMLResponse)
+async def agent_prompt_preview(
+    tenant: str, project: str, request: Request, db: Session = Depends(get_db)
+) -> HTMLResponse:
+    """Render the *composed* system prompt (global + persona) that will be
+    sent to Ollama for this agent. Read-only, used by the Vorschau button."""
+    row = db.get(TenantProjectPrompt, (tenant, project))
+    persona = (row.persona_prompt or "").strip() if row else ""
+    live_global = get_system_prompt()
+    composed = ChatService._compose_system_prompt(
+        tenant, project, persona, global_prompt=live_global
+    )
+    return templates.TemplateResponse(
+        "partials/agent_prompt_preview.html",
+        {
+            "request": request,
+            "tenant": tenant,
+            "project": project,
+            "composed": composed,
+            "has_persona": bool(persona),
+            "global_prompt": live_global,
+        },
+    )
+
+
+# --- Global system prompt editor (Konfiguration page) ----------------------
+
+def _render_system_prompt(
+    request: Request,
+    *,
+    saved: bool = False,
+    error: Optional[str] = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "partials/system_prompt.html",
+        {
+            "request": request,
+            "global_prompt": get_system_prompt(),
+            "default_prompt": DEFAULT_SYSTEM_PROMPT,
+            "is_override": system_prompt_has_override(),
+            "max_chars": SYSTEM_PROMPT_MAX_CHARS,
+            "saved": saved,
+            "error": error,
+        },
+    )
+
+
+@router.get("/system-prompt", response_class=HTMLResponse)
+async def system_prompt_panel(request: Request) -> HTMLResponse:
+    return _render_system_prompt(request)
+
+
+@router.post("/system-prompt", response_class=HTMLResponse)
+async def system_prompt_save(request: Request) -> HTMLResponse:
+    form = await request.form()
+    raw = (form.get("system_prompt") or "").strip()
+    try:
+        set_system_prompt(raw)
+    except ValueError as exc:
+        return _render_system_prompt(request, error=str(exc))
+    return _render_system_prompt(request, saved=True)
+
+
+@router.post("/system-prompt/reset", response_class=HTMLResponse)
+async def system_prompt_reset(request: Request) -> HTMLResponse:
+    clear_system_prompt()
+    return _render_system_prompt(request, saved=True)
+
+
+@router.delete("/agents/{tenant}/{project}/prompt", response_class=HTMLResponse)
+async def agent_prompt_clear(
+    tenant: str, project: str, request: Request, db: Session = Depends(get_db)
+) -> HTMLResponse:
+    row = db.get(TenantProjectPrompt, (tenant, project))
+    if row is not None:
+        db.delete(row)
+        db.commit()
+    return HTMLResponse(
+        f'<div class="alert alert-success py-1 m-0 small">'
+        f'Persona für <code>{tenant} / {project}</code> entfernt.</div>'
+    )
+
+
+@router.post("/agents/{tenant}/{project}/chat-model", response_class=HTMLResponse)
+async def agent_chat_model_set(
+    tenant: str, project: str, request: Request, db: Session = Depends(get_db)
+) -> HTMLResponse:
+    """Set or clear the per-agent chat model. Empty value = use global default."""
+    form = await request.form()
+    raw = (form.get("chat_model") or "").strip()
+
+    row = db.get(TenantProjectPrompt, (tenant, project))
+    if row is None:
+        # Agent-Konfig braucht zumindest eine Zeile, damit wir den Wert speichern können.
+        row = TenantProjectPrompt(
+            tenant=tenant, project=project, persona_prompt="",
+            chat_model=raw or None,
+        )
+        db.add(row)
+    else:
+        row.chat_model = raw or None
+    db.commit()
+
+    if raw:
+        msg = (
+            f'<div class="alert alert-success py-1 m-0 small">'
+            f'Chat-Modell für <code>{tenant} / {project}</code> auf '
+            f'<code>{raw}</code> gesetzt.</div>'
+        )
+    else:
+        msg = (
+            f'<div class="alert alert-success py-1 m-0 small">'
+            f'<code>{tenant} / {project}</code> verwendet jetzt den globalen '
+            f'Default <code>{settings.CHAT_MODEL}</code>.</div>'
+        )
+    return HTMLResponse(msg)

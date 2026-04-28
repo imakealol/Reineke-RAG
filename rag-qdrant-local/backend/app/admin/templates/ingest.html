@@ -15,23 +15,42 @@
         <form hx-post="/admin/api/ingest/scan"
               hx-target="#ingest-scan"
               hx-swap="innerHTML">
-          <div class="mb-2">
-            <label class="form-label small text-secondary mb-1">Mandant</label>
-            <input class="form-control" name="tenant" id="tenant-input"
-                   list="tenants-list" autocomplete="off"
-                   required placeholder="bestehenden auswählen oder neuen anlegen">
-            <datalist id="tenants-list"></datalist>
+          <!-- Existing-agent mode (default) -->
+          <div id="existing-agent-block" class="mb-2">
+            <label class="form-label small text-secondary mb-1">Agent (Mandant / Projekt)</label>
+            <select class="form-select" id="agent-select">
+              <option value="">— Agent wählen —</option>
+            </select>
+            <input type="hidden" name="tenant" id="tenant-input">
+            <input type="hidden" name="project" id="project-input">
             <div class="form-text">
-              Tippe einen neuen Namen oder wähle aus der Liste der bekannten Mandanten.
+              Nur bestehende Agenten — neue werden über den Toggle unten angelegt.
             </div>
           </div>
-          <div class="mb-2">
-            <label class="form-label small text-secondary mb-1">Projekt</label>
-            <input class="form-control" name="project" id="project-input"
-                   list="projects-list" autocomplete="off"
-                   required placeholder="bestehendes wählen oder neues anlegen">
-            <datalist id="projects-list"></datalist>
+
+          <!-- New-agent mode (toggle) -->
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="new-agent-toggle">
+            <label class="form-check-label small" for="new-agent-toggle">
+              Neuen Agenten anlegen
+            </label>
           </div>
+          <div id="new-agent-block" class="mb-2 d-none">
+            <div class="row g-2">
+              <div class="col">
+                <label class="form-label small text-secondary mb-1">Mandant</label>
+                <input class="form-control" id="new-tenant-input" placeholder="z. B. mk-lasertechnik">
+              </div>
+              <div class="col">
+                <label class="form-label small text-secondary mb-1">Projekt</label>
+                <input class="form-control" id="new-project-input" placeholder="z. B. jonyx-analyse">
+              </div>
+            </div>
+            <div class="form-text text-warning">
+              ⚠ Neue Werte erzeugen einen frischen Agenten — vorher prüfen ob ein passender bereits existiert.
+            </div>
+          </div>
+
           <div class="mb-2">
             <label class="form-label small text-secondary mb-1">Absoluter Pfad</label>
             <input class="form-control" name="path" required placeholder="/mnt/rag-data/…">
@@ -44,49 +63,75 @@
         </form>
         <script>
         (async () => {
-          // Populate the tenant + project datalists from /admin/api/tenants.json
-          // and filter projects when a tenant is chosen.
           let pairs = [];
           try {
-            const resp = await fetch('/admin/api/tenants.json');
-            pairs = await resp.json();
+            pairs = await (await fetch('/admin/api/tenants.json')).json();
           } catch (err) {
             console.warn('tenants.json fetch failed', err);
-            return;
           }
-          const tenantsList = document.getElementById('tenants-list');
-          const projectsList = document.getElementById('projects-list');
-          const tenantInput = document.getElementById('tenant-input');
-          const projectInput = document.getElementById('project-input');
 
-          const uniq = arr => Array.from(new Set(arr));
+          const select = document.getElementById('agent-select');
+          const tenantHidden = document.getElementById('tenant-input');
+          const projectHidden = document.getElementById('project-input');
+          const toggle = document.getElementById('new-agent-toggle');
+          const existingBlock = document.getElementById('existing-agent-block');
+          const newBlock = document.getElementById('new-agent-block');
+          const newTenantInput = document.getElementById('new-tenant-input');
+          const newProjectInput = document.getElementById('new-project-input');
 
-          const renderTenants = () => {
-            tenantsList.innerHTML = '';
-            uniq(pairs.map(p => p.tenant)).sort().forEach(t => {
+          // Populate dropdown with "tenant / project" pairs
+          pairs
+            .sort((a, b) => (a.tenant + a.project).localeCompare(b.tenant + b.project))
+            .forEach(p => {
               const opt = document.createElement('option');
-              opt.value = t;
-              tenantsList.appendChild(opt);
+              opt.value = JSON.stringify([p.tenant, p.project]);
+              opt.textContent = p.tenant + ' / ' + p.project;
+              select.appendChild(opt);
             });
+
+          const syncFromSelect = () => {
+            if (!select.value) {
+              tenantHidden.value = '';
+              projectHidden.value = '';
+              return;
+            }
+            const [t, p] = JSON.parse(select.value);
+            tenantHidden.value = t;
+            projectHidden.value = p;
           };
 
-          const renderProjects = () => {
-            const t = tenantInput.value.trim();
-            const filtered = t
-              ? pairs.filter(p => p.tenant === t).map(p => p.project)
-              : pairs.map(p => p.project);
-            projectsList.innerHTML = '';
-            uniq(filtered).sort().forEach(p => {
-              const opt = document.createElement('option');
-              opt.value = p;
-              projectsList.appendChild(opt);
-            });
+          const syncFromNewInputs = () => {
+            tenantHidden.value = newTenantInput.value.trim();
+            projectHidden.value = newProjectInput.value.trim();
           };
 
-          renderTenants();
-          renderProjects();
-          tenantInput.addEventListener('input', renderProjects);
-          tenantInput.addEventListener('change', renderProjects);
+          select.addEventListener('change', syncFromSelect);
+          newTenantInput.addEventListener('input', syncFromNewInputs);
+          newProjectInput.addEventListener('input', syncFromNewInputs);
+
+          toggle.addEventListener('change', () => {
+            const isNew = toggle.checked;
+            existingBlock.classList.toggle('d-none', isNew);
+            newBlock.classList.toggle('d-none', !isNew);
+            select.required = !isNew;
+            newTenantInput.required = isNew;
+            newProjectInput.required = isNew;
+            if (isNew) {
+              syncFromNewInputs();
+            } else {
+              syncFromSelect();
+            }
+          });
+
+          // Initial state: existing-agent mode, select required
+          if (pairs.length === 0) {
+            // No existing agents → force new-agent mode + lock the toggle off
+            toggle.checked = true;
+            toggle.disabled = true;
+            toggle.dispatchEvent(new Event('change'));
+          } else {
+            select.required = true;
+          }
         })();
         </script>
       </div>

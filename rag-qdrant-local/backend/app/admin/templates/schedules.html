@@ -18,12 +18,17 @@
               hx-swap="innerHTML"
               hx-on::after-request="if(event.detail.successful) this.reset()">
           <div class="mb-2">
-            <label class="form-label small text-secondary mb-1">Mandant</label>
-            <input class="form-control" name="tenant" required placeholder="z. B. reineke">
-          </div>
-          <div class="mb-2">
-            <label class="form-label small text-secondary mb-1">Projekt</label>
-            <input class="form-control" name="project" required placeholder="z. B. watch">
+            <label class="form-label small text-secondary mb-1">Agent (Mandant / Projekt)</label>
+            <select class="form-select" id="schedule-agent-select" required>
+              <option value="">— Agent wählen —</option>
+            </select>
+            <input type="hidden" name="tenant" id="schedule-tenant">
+            <input type="hidden" name="project" id="schedule-project">
+            <div class="form-text">
+              Nur Agenten anwählbar, die bereits Dokumente ingested haben.
+              Neue Agenten werden über den
+              <a href="/admin/ingest">Ingest-Assistenten</a> angelegt.
+            </div>
           </div>
           <div class="mb-2">
             <label class="form-label small text-secondary mb-1">Absoluter Pfad</label>
@@ -47,6 +52,42 @@
           </div>
           <button class="btn btn-primary" type="submit">Zeitplan anlegen</button>
         </form>
+        <script>
+        (async () => {
+          const select = document.getElementById('schedule-agent-select');
+          const tenantHidden = document.getElementById('schedule-tenant');
+          const projectHidden = document.getElementById('schedule-project');
+          let pairs = [];
+          try {
+            pairs = await (await fetch('/admin/api/tenants.json')).json();
+          } catch (err) {
+            console.warn('tenants.json fetch failed', err);
+          }
+          if (pairs.length === 0) {
+            select.innerHTML = '<option value="">Keine Agenten vorhanden</option>';
+            select.disabled = true;
+            return;
+          }
+          pairs
+            .sort((a, b) => (a.tenant + a.project).localeCompare(b.tenant + b.project))
+            .forEach(p => {
+              const opt = document.createElement('option');
+              opt.value = JSON.stringify([p.tenant, p.project]);
+              opt.textContent = p.tenant + ' / ' + p.project;
+              select.appendChild(opt);
+            });
+          select.addEventListener('change', () => {
+            if (!select.value) {
+              tenantHidden.value = '';
+              projectHidden.value = '';
+              return;
+            }
+            const [t, p] = JSON.parse(select.value);
+            tenantHidden.value = t;
+            projectHidden.value = p;
+          });
+        })();
+        </script>
       </div>
     </div>
   </div>

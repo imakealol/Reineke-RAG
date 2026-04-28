@@ -49,8 +49,32 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, futu
 
 
 def init_db() -> None:
-    """Create all tables if they do not exist yet."""
+    """Create all tables if they do not exist yet, then apply ad-hoc column
+    migrations for fields that were added after the initial schema."""
     Base.metadata.create_all(bind=engine)
+    _apply_column_migrations()
+
+
+def _apply_column_migrations() -> None:
+    """Idempotent ``ALTER TABLE … ADD COLUMN`` for fields added post-launch.
+
+    SQLAlchemy's ``create_all`` does NOT alter existing tables, so columns we
+    add to models later need a manual ``ALTER`` here. SQLite lets us add a
+    new nullable column without rewriting the table — fast and lossless.
+
+    Add an entry per (table, column, sql-type) when extending a model.
+    """
+    additions = [
+        ("tenant_project_prompts", "chat_model", "VARCHAR(128)"),
+    ]
+    with engine.begin() as conn:
+        for table, column, col_type in additions:
+            cols = conn.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()
+            existing = {row[1] for row in cols}
+            if column not in existing:
+                conn.exec_driver_sql(
+                    f'ALTER TABLE {table} ADD COLUMN "{column}" {col_type}'
+                )
 
 
 @contextmanager

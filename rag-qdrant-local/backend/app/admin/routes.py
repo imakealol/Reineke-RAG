@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 
@@ -28,9 +28,15 @@ async def page_overview(request: Request) -> HTMLResponse:
     return templates.TemplateResponse("overview.html", _ctx(request, "overview"))
 
 
-@router.get("/mandanten", response_class=HTMLResponse)
-async def page_tenants(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse("tenants.html", _ctx(request, "tenants"))
+@router.get("/agenten", response_class=HTMLResponse)
+async def page_agents(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse("agents.html", _ctx(request, "tenants"))
+
+
+@router.get("/mandanten", include_in_schema=False)
+async def page_tenants_legacy() -> RedirectResponse:
+    """Backwards-compat redirect — Mandanten was renamed to Agenten."""
+    return RedirectResponse("/admin/agenten", status_code=308)
 
 
 @router.get("/dokumente", response_class=HTMLResponse)

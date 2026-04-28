@@ -31,7 +31,14 @@
                   hx-post="/admin/api/config/{{ r.key }}"
                   hx-target="#config-panel"
                   hx-swap="innerHTML">
-              {% if r.type == 'enum' %}
+              {% if r.options_url %}
+              <select class="form-select form-select-sm js-dynamic-select"
+                      name="value"
+                      data-options-url="{{ r.options_url }}"
+                      data-current-value="{{ r.value }}">
+                <option value="{{ r.value }}" selected>{{ r.value }} (aktuell)</option>
+              </select>
+              {% elif r.type == 'enum' %}
               <select class="form-select form-select-sm" name="value">
                 {% for c in r.choices %}
                 <option value="{{ c }}" {% if c == r.value|string %}selected{% endif %}>{{ c }}</option>
@@ -102,3 +109,49 @@
     </table>
   </div>
 </div>
+
+<script>
+(() => {
+  // Hydrate every <select class="js-dynamic-select"> with options fetched
+  // from its data-options-url. Current value is preserved at the top, even
+  // if the model is no longer installed (annotated as such).
+  document.querySelectorAll('select.js-dynamic-select').forEach(async (sel) => {
+    const url = sel.dataset.optionsUrl;
+    const current = sel.dataset.currentValue || sel.value || '';
+    if (!url) return;
+    try {
+      const resp = await fetch(url);
+      const data = await resp.json();
+      const opts = (data.options || []).slice();
+      sel.innerHTML = '';
+      const seen = new Set();
+      if (current && !opts.includes(current)) {
+        const opt = document.createElement('option');
+        opt.value = current;
+        opt.textContent = current + ' (nicht installiert)';
+        opt.selected = true;
+        sel.appendChild(opt);
+        seen.add(current);
+      }
+      opts.forEach(name => {
+        if (seen.has(name)) return;
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        if (name === current) opt.selected = true;
+        sel.appendChild(opt);
+        seen.add(name);
+      });
+      if (opts.length === 0 && !current) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = '— keine Modelle gefunden —';
+        opt.disabled = true;
+        sel.appendChild(opt);
+      }
+    } catch (err) {
+      console.warn('options fetch failed for', url, err);
+    }
+  });
+})();
+</script>

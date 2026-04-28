@@ -92,6 +92,13 @@ class IngestScheduleIn(TenantProject):
     enabled: bool = True
 
 
+PERSONA_PROMPT_MAX_CHARS = 4000
+
+
+class TenantProjectPromptIn(TenantProject):
+    persona_prompt: str = Field(default="", max_length=PERSONA_PROMPT_MAX_CHARS)
+
+
 class IngestScheduleOut(IngestScheduleIn):
     id: str
     last_run_at: Optional[datetime] = None

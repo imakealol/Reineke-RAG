@@ -186,6 +186,46 @@ class IngestSchedule(Base):
     )
 
 
+class TenantProjectPrompt(Base):
+    """Persona / domain prompt that gets appended to the global system
+    prompt for one ``(tenant, project)`` collection.
+
+    Composite primary key on ``(tenant, project)`` — exactly one persona
+    per collection. Empty / missing rows fall back to the global prompt
+    only.
+    """
+
+    __tablename__ = "tenant_project_prompts"
+
+    tenant: Mapped[str] = mapped_column(String(128), primary_key=True)
+    project: Mapped[str] = mapped_column(String(128), primary_key=True)
+    persona_prompt: Mapped[str] = mapped_column(Text, default="")
+    # Per-agent override of the chat model. Empty / NULL → fall back to
+    # ``settings.CHAT_MODEL``. Lets each agent run on a different model
+    # (e.g. small fast one for FAQ, big high-quality one for legal review).
+    chat_model: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
+class SystemPromptOverride(Base):
+    """Single-row override for the global system prompt.
+
+    PK is the fixed string ``'global'`` — at most one row exists. If the row
+    is missing, the code falls back to the default ``SYSTEM_PROMPT`` constant
+    in ``chat_service.py``.
+    """
+
+    __tablename__ = "system_prompt_overrides"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True, default="global")
+    prompt: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+
 class SettingsOverride(Base):
     """Runtime override for a Settings field, edited from the admin UI.
 

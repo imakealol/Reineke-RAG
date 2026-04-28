@@ -1,0 +1,18 @@
+<div class="card border-0 mt-2">
+  <div class="card-header bg-body py-1 px-2 small d-flex justify-content-between align-items-center">
+    <span>
+      Zusammengesetzter System-Prompt für
+      <code>{{ tenant }} / {{ project }}</code>
+      {% if has_persona %}
+        <span class="badge bg-info-subtle text-info border ms-1">mit Persona</span>
+      {% else %}
+        <span class="badge bg-secondary-subtle text-secondary border ms-1">nur global</span>
+      {% endif %}
+    </span>
+    <span class="text-secondary">
+      So geht er als <code>role: system</code> an Ollama.
+    </span>
+  </div>
+  <pre class="m-0 p-2 small bg-body-tertiary border-top"
+       style="max-height: 22rem; overflow: auto; white-space: pre-wrap;">{{ composed }}</pre>
+</div>
