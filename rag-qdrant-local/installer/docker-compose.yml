@@ -1,0 +1,90 @@
+# =============================================================================
+# Reineke-RAG · docker-compose.yml
+# =============================================================================
+# Wird vom Installer nach /opt/reineke-rag/ kopiert und dort gestartet.
+# Die Pfade auf der Host-Seite (links vom :) verweisen alle auf
+# /opt/reineke-rag/, das vom Installer angelegt wird.
+# =============================================================================
+
+name: reineke-rag
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Qdrant — Vektor-Datenbank
+  # ---------------------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: reineke-rag-qdrant
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - ./qdrant:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  # ---------------------------------------------------------------------------
+  # Ollama — lokales LLM-Runtime (Embedding + Chat)
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:0.4.4
+    container_name: reineke-rag-ollama
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ./ollama:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+    # GPU-Aktivierung: in .env USE_GPU=1 setzen, dann den deploy-Block
+    # einkommentieren. Erfordert nvidia-container-toolkit auf dem Host.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # ---------------------------------------------------------------------------
+  # Backend — FastAPI-Anwendung (Reineke-RAG Kern)
+  # ---------------------------------------------------------------------------
+  backend:
+    image: ${BACKEND_IMAGE:-ghcr.io/reineke-technik/rag-qdrant-local:latest}
+    container_name: reineke-rag-backend
+    restart: unless-stopped
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    ports:
+      - "${PORT:-8000}:8000"
+    env_file:
+      - .env
+    volumes:
+      # Persistenz (Metadaten, konvertierte Office-Dateien, temp)
+      - ./storage:/app/storage
+      # Dokumenten-Mounts werden vom Installer dynamisch erweitert.
+      # Beispiel-Eintrag (auskommentiert) — der Installer ersetzt diesen
+      # Block automatisch anhand von ALLOWED_BASE_PATHS in der .env:
+      #
+      #   - /srv/dokumente:/srv/dokumente:ro
+      #
+      # ─── BEGIN ALLOWED_BASE_PATHS (auto-generated) ───
+      # ─── END   ALLOWED_BASE_PATHS (auto-generated) ───
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 60s

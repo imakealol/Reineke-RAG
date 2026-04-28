@@ -1,0 +1,11 @@
+[Unit]
+Description=Reineke-RAG nightly backup
+After=reineke-rag.service
+Requires=reineke-rag.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/reineke-rag
+ExecStart=/opt/reineke-rag/scripts/backup.sh
+StandardOutput=journal
+StandardError=journal
