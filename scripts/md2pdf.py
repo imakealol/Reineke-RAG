@@ -14,39 +14,100 @@ from pathlib import Path
 import markdown
 from weasyprint import HTML, CSS
 
-CSS_TEMPLATE = """
-@page {
+def build_page_css(client_logo: Path | None, creator_logo: Path | None) -> str:
+    client_uri = (
+        f"url('file://{client_logo.resolve()}')" if client_logo and client_logo.exists() else "none"
+    )
+    creator_uri = (
+        f"url('file://{creator_logo.resolve()}')" if creator_logo and creator_logo.exists() else "none"
+    )
+    client_present = client_uri != "none"
+    creator_present = creator_uri != "none"
+    return f"""
+@page {{
     size: A4;
-    margin: 22mm 18mm 24mm 18mm;
-    @bottom-center {
-        content: "Reineke-RAG · Technische Dokumentation · Seite " counter(page) " / " counter(pages);
-        font-family: 'Helvetica', 'Arial', sans-serif;
-        font-size: 9pt;
-        color: #666;
-    }
-    @top-right {
+    margin: 24mm 18mm 22mm 18mm;
+    @top-left {{
+        content: {('""' if client_present else '""')};
+        background-image: {client_uri};
+        background-repeat: no-repeat;
+        background-size: contain;
+        background-position: left center;
+        width: 26mm;
+        height: 12mm;
+    }}
+    @top-right {{
         content: "Stand 2026-04-28";
         font-family: 'Helvetica', 'Arial', sans-serif;
         font-size: 8.5pt;
         color: #888;
-    }
-}
+        vertical-align: bottom;
+    }}
+    @bottom-left {{
+        content: "";
+        background-image: {creator_uri};
+        background-repeat: no-repeat;
+        background-size: contain;
+        background-position: left bottom;
+        width: 9mm;
+        height: 10.5mm;
+        opacity: 0.85;
+    }}
+    @bottom-center {{
+        content: "Reineke-RAG · Technische Dokumentation · Seite " counter(page) " / " counter(pages);
+        font-family: 'Helvetica', 'Arial', sans-serif;
+        font-size: 9pt;
+        color: #666;
+    }}
+}}
 
-@page :first {
-    @top-right { content: ""; }
-    @bottom-center { content: ""; }
-}
+@page :first {{
+    @top-left    {{ content: ""; background-image: none; }}
+    @top-right   {{ content: ""; }}
+    @bottom-left {{ content: ""; background-image: none; }}
+    @bottom-center {{ content: ""; }}
+}}
 
-@page schema {
+@page schema {{
     size: A4 landscape;
-    margin: 12mm 12mm 14mm 12mm;
-    @bottom-center {
+    margin: 18mm 12mm 16mm 12mm;
+    @top-left {{
+        content: "";
+        background-image: {client_uri};
+        background-repeat: no-repeat;
+        background-size: contain;
+        background-position: left center;
+        width: 26mm;
+        height: 12mm;
+    }}
+    @top-right {{
+        content: "Stand 2026-04-28";
+        font-family: 'Helvetica', 'Arial', sans-serif;
+        font-size: 8.5pt;
+        color: #888;
+        vertical-align: bottom;
+    }}
+    @bottom-left {{
+        content: "";
+        background-image: {creator_uri};
+        background-repeat: no-repeat;
+        background-size: contain;
+        background-position: left bottom;
+        width: 9mm;
+        height: 10.5mm;
+        opacity: 0.85;
+    }}
+    @bottom-center {{
         content: "Reineke-RAG · Architektur-Schema · Seite " counter(page);
         font-family: 'Helvetica', 'Arial', sans-serif;
         font-size: 9pt;
         color: #666;
-    }
-}
+    }}
+}}
+"""
+
+
+CSS_TEMPLATE = """
 
 html, body {
     font-family: 'Helvetica', 'Arial', sans-serif;
@@ -210,6 +271,49 @@ img.architecture {
     letter-spacing: 0.5pt;
 }
 
+.client-strip {
+    text-align: center;
+    margin-top: -8mm;
+    margin-bottom: 12mm;
+    padding-bottom: 6mm;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.client-strip img {
+    max-height: 18mm;
+    max-width: 70mm;
+    height: auto;
+}
+
+.client-strip .label {
+    display: block;
+    font-size: 8pt;
+    letter-spacing: 1.5pt;
+    color: #888;
+    text-transform: uppercase;
+    margin-bottom: 4pt;
+}
+
+.titlepage.with-client {
+    padding-top: 0;
+}
+
+.titlepage.with-client h1 {
+    margin-top: 16mm;
+}
+
+.attribution {
+    margin-top: 36pt;
+    font-size: 9.5pt;
+    color: #666;
+    line-height: 1.5;
+}
+
+.attribution .creator {
+    color: #1f4e79;
+    font-weight: bold;
+}
+
 .schema-page {
     page: schema;
     page-break-before: always;
@@ -227,8 +331,41 @@ img.architecture {
 }
 """
 
-TITLE_PAGE_HTML = """
-<section class="titlepage">
+def title_page_html(
+    *,
+    client_logo: Path | None = None,
+    client_name: str | None = None,
+    creator_name: str | None = None,
+    creator_company: str | None = None,
+    creator_address: str | None = None,
+) -> str:
+    client_strip = ""
+    titlepage_class = "titlepage"
+    if client_logo and client_logo.exists():
+        client_strip = (
+            '<div class="client-strip">'
+            '<span class="label">Erstellt für</span>'
+            f'<img src="{client_logo.resolve()}" alt="{client_name or "Kunde"}"/>'
+            "</div>"
+        )
+        titlepage_class = "titlepage with-client"
+
+    attribution = ""
+    if creator_name or creator_company:
+        creator_line = creator_name or ""
+        company_line = creator_company or ""
+        address_line = creator_address or ""
+        attribution = (
+            '<div class="attribution">'
+            + (f'<span class="creator">{creator_name}</span><br/>' if creator_name else "")
+            + (f"{company_line}<br/>" if company_line else "")
+            + (f"{address_line}" if address_line else "")
+            + "</div>"
+        )
+
+    return f"""
+<section class="{titlepage_class}">
+    {client_strip}
     <h1>Reineke-RAG</h1>
     <div class="subtitle">Technische Dokumentation</div>
     <div class="subtitle" style="font-size:12pt; color:#666;">
@@ -237,10 +374,10 @@ TITLE_PAGE_HTML = """
     </div>
     <div class="badge">100 % offline · on-premise</div>
     <div class="meta">
-        Reineke-Technik<br/>
         Stand 28. April 2026<br/>
         Code-Stand: 17 Module · 3.036 Python-Zeilen · 9 HTTP-Endpunkte
     </div>
+    {attribution}
 </section>
 """
 
@@ -256,7 +393,12 @@ def render_schema_page(svg_path: Path) -> str:
     )
 
 
-def md_to_html(md_path: Path, schema_svg: Path | None) -> str:
+def md_to_html(
+    md_path: Path,
+    schema_svg: Path | None,
+    *,
+    title_html: str | None = None,
+) -> str:
     text = md_path.read_text(encoding="utf-8")
 
     # Strip YAML front matter if present (we render our own title page)
@@ -288,7 +430,7 @@ def md_to_html(md_path: Path, schema_svg: Path | None) -> str:
         "<!doctype html><html><head><meta charset='utf-8'>"
         "<title>Reineke-RAG · Technische Dokumentation</title>"
         "</head><body>"
-        + TITLE_PAGE_HTML
+        + (title_html or title_page_html())
         + body_html
         + "</body></html>"
     )
@@ -304,6 +446,18 @@ def main() -> int:
         default=None,
         help="Optional SVG inserted as own landscape page",
     )
+    parser.add_argument("--client-logo", type=Path, default=None,
+                        help="Logo file (PNG/SVG) shown discreetly above the title")
+    parser.add_argument("--client-name", type=str, default=None,
+                        help="Client name (alt-text for the logo)")
+    parser.add_argument("--creator-name", type=str, default=None,
+                        help="Creator full name shown in attribution block")
+    parser.add_argument("--creator-company", type=str, default=None,
+                        help="Creator company name")
+    parser.add_argument("--creator-address", type=str, default=None,
+                        help="Creator address line")
+    parser.add_argument("--creator-logo", type=Path, default=None,
+                        help="Small creator logo placed in the page footer")
     args = parser.parse_args()
 
     if not args.input.exists():
@@ -316,12 +470,20 @@ def main() -> int:
         if guess.exists():
             schema_svg = guess
 
-    html = md_to_html(args.input, schema_svg)
+    title_html = title_page_html(
+        client_logo=args.client_logo,
+        client_name=args.client_name,
+        creator_name=args.creator_name,
+        creator_company=args.creator_company,
+        creator_address=args.creator_address,
+    )
+    html = md_to_html(args.input, schema_svg, title_html=title_html)
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
+    page_css = build_page_css(args.client_logo, args.creator_logo)
     HTML(string=html, base_url=str(args.input.parent)).write_pdf(
         target=str(args.output),
-        stylesheets=[CSS(string=CSS_TEMPLATE)],
+        stylesheets=[CSS(string=page_css), CSS(string=CSS_TEMPLATE)],
     )
     print(f"Wrote {args.output} ({args.output.stat().st_size / 1024:.1f} KiB)")
     return 0

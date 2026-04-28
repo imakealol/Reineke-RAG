@@ -44,3 +44,9 @@ Thumbs.db
 *.gguf
 *.safetensors
 .doc_venv/
+
+# Client-branded documentation variants (not for public repo)
+docs/TECHNISCHE_DOKUMENTATION_amixon.md
+pdf/TECHNISCHE_DOKUMENTATION_amixon.pdf
+docs/assets/amixon-logo.png
+docs/assets/reineke-logo.svg
