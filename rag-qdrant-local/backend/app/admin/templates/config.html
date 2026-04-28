@@ -23,6 +23,20 @@
 
 <hr class="my-4">
 
+<h2 class="h4 mb-2">Globaler System-Prompt</h2>
+<p class="text-secondary">
+  Wird bei jeder Chat-Anfrage als <code>role: system</code> an Ollama gesendet
+  und kann von Persona-Prompts (siehe <a href="/admin/agenten">Agenten</a>) nicht
+  überschrieben, sondern nur ergänzt werden.
+</p>
+<div hx-get="/admin/api/system-prompt"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  <p class="text-secondary">Lade…</p>
+</div>
+
+<hr class="my-4">
+
 <h2 class="h4 mb-2">OpenWebUI · Pipe-Function</h2>
 <p class="text-secondary">
   Diese Pipe-Function bindet den Reineke-RAG-Backend in OpenWebUI ein. In OpenWebUI

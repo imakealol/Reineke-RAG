@@ -33,9 +33,69 @@
                       data-tenant="{{ tenant }}"
                       data-project="{{ p.project }}"
                       title="Pipe-Function für OpenWebUI anzeigen">Pipe</button>
+              <button type="button"
+                      class="btn btn-sm btn-outline-info js-prompt-toggle"
+                      data-prompt-id="prompt-{{ pipe_id }}"
+                      title="Persona-Prompt bearbeiten">
+                Prompt{% if p.persona_prompt %} ✓{% endif %}
+              </button>
+              <button type="button"
+                      class="btn btn-sm btn-outline-secondary"
+                      hx-get="/admin/api/agents/{{ tenant|urlencode }}/{{ p.project|urlencode }}/prompt-preview"
+                      hx-target="#preview-{{ pipe_id }}"
+                      hx-swap="innerHTML"
+                      title="Zusammengesetzten System-Prompt ansehen">Vorschau</button>
               <a class="btn btn-sm btn-outline-primary"
                  href="/admin/jobs?tenant={{ tenant }}&project={{ p.project }}">Verlauf</a>
             </div>
+          </div>
+          <div id="prompt-{{ pipe_id }}" class="mt-2 d-none">
+            <!-- Per-Agent Chat-Modell -->
+            <form class="mb-3 pb-3 border-bottom"
+                  hx-post="/admin/api/agents/{{ tenant|urlencode }}/{{ p.project|urlencode }}/chat-model"
+                  hx-target="#prompt-{{ pipe_id }}-status"
+                  hx-swap="innerHTML">
+              <label class="small text-secondary mb-1">
+                Chat-Modell für <code>{{ tenant }} / {{ p.project }}</code>
+                — leer = globaler Fallback.
+              </label>
+              <div class="d-flex gap-2">
+                <select class="form-select form-select-sm js-dynamic-select flex-grow-1"
+                        name="chat_model"
+                        data-options-url="/admin/api/ollama/models?role=chat"
+                        data-current-value="{{ p.chat_model or '' }}"
+                        data-default-label="— globaler Fallback —">
+                  <option value="" {% if not p.chat_model %}selected{% endif %}>— globaler Fallback —</option>
+                  {% if p.chat_model %}
+                  <option value="{{ p.chat_model }}" selected>{{ p.chat_model }} (aktuell)</option>
+                  {% endif %}
+                </select>
+                <button type="submit" class="btn btn-sm btn-primary">↳</button>
+              </div>
+            </form>
+
+            <!-- Persona-Prompt -->
+            <form hx-post="/admin/api/agents/{{ tenant|urlencode }}/{{ p.project|urlencode }}/prompt"
+                  hx-target="#prompt-{{ pipe_id }}-status"
+                  hx-swap="innerHTML">
+              <label class="small text-secondary mb-1">
+                Persona-Prompt für <code>{{ tenant }} / {{ p.project }}</code>
+                — wird zusätzlich zum globalen System-Prompt gesendet (max
+                <strong>4000</strong> Zeichen). Leer lassen + speichern, um
+                zu entfernen.
+              </label>
+              <textarea class="form-control form-control-sm font-monospace"
+                        name="persona_prompt"
+                        rows="4"
+                        maxlength="4000"
+                        placeholder="z. B. 'Du beantwortest Fragen zu ISMS-Richtlinien der Plasmatreat GmbH. Antworte formal und verweise auf Policy-Nummern.'">{{ p.persona_prompt or "" }}</textarea>
+              <div class="d-flex justify-content-between align-items-center mt-1">
+                <div id="prompt-{{ pipe_id }}-status" class="small flex-grow-1 me-2"></div>
+                <div class="d-flex gap-1">
+                  <button type="submit" class="btn btn-sm btn-primary">Speichern</button>
+                </div>
+              </div>
+            </form>
           </div>
           <div id="{{ pipe_id }}"
                class="mt-2 d-none js-pipe-panel"
@@ -59,6 +119,7 @@
                  class="m-0 p-2 small bg-body-tertiary border rounded js-pipe-code"
                  style="max-height: 18rem; overflow: auto; white-space: pre-wrap;">Lade…</pre>
           </div>
+          <div id="preview-{{ pipe_id }}"></div>
         </li>
         {% endfor %}
       </ul>
@@ -99,6 +160,53 @@
         codeEl.textContent = 'Fehler beim Laden: ' + err;
       }
     });
+  });
+
+  document.querySelectorAll('.js-prompt-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const panel = document.getElementById(btn.dataset.promptId);
+      if (panel) panel.classList.toggle('d-none');
+    });
+  });
+
+  // Hydrate the per-agent chat-model dropdowns. Same pattern as Konfiguration.
+  document.querySelectorAll('select.js-dynamic-select').forEach(async (sel) => {
+    const url = sel.dataset.optionsUrl;
+    const current = sel.dataset.currentValue || '';
+    const fallbackLabel = sel.dataset.defaultLabel || '— Default —';
+    if (!url) return;
+    try {
+      const resp = await fetch(url);
+      const data = await resp.json();
+      const opts = (data.options || []).slice();
+      sel.innerHTML = '';
+      // Empty option = fall back to global default.
+      const blank = document.createElement('option');
+      blank.value = '';
+      blank.textContent = fallbackLabel;
+      if (!current) blank.selected = true;
+      sel.appendChild(blank);
+      const seen = new Set();
+      if (current && !opts.includes(current)) {
+        const opt = document.createElement('option');
+        opt.value = current;
+        opt.textContent = current + ' (nicht installiert)';
+        opt.selected = true;
+        sel.appendChild(opt);
+        seen.add(current);
+      }
+      opts.forEach(name => {
+        if (seen.has(name)) return;
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        if (name === current) opt.selected = true;
+        sel.appendChild(opt);
+        seen.add(name);
+      });
+    } catch (err) {
+      console.warn('options fetch failed for', url, err);
+    }
   });
 
   document.querySelectorAll('.js-pipe-copy').forEach(btn => {

@@ -28,6 +28,9 @@ class Settings(BaseSettings):
 
     # Ollama
     OLLAMA_BASE_URL: str = "http://localhost:11434"
+    # Per-request keep_alive — passed in /api/chat and /api/embeddings bodies.
+    # Format: "5m", "1h", "24h", "-1" (forever), "0" (unload immediately).
+    OLLAMA_KEEP_ALIVE: str = "1h"
 
     # Qdrant
     QDRANT_URL: str = "http://localhost:6333"
@@ -91,6 +94,17 @@ class Settings(BaseSettings):
     def _non_negative_int(cls, v: int) -> int:
         if v < 0:
             raise ValueError("must be ≥ 0")
+        return v
+
+    @field_validator("OLLAMA_KEEP_ALIVE")
+    @classmethod
+    def _ollama_keep_alive(cls, v: str) -> str:
+        import re
+        v = (v or "").strip()
+        if not re.fullmatch(r"-1|0|\d+[smh]", v):
+            raise ValueError(
+                "OLLAMA_KEEP_ALIVE must look like '5m', '1h', '24h', '-1' (forever), or '0'"
+            )
         return v
 
     @field_validator("MIN_RETRIEVAL_SCORE")

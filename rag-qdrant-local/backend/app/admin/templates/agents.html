@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Mandanten · Reineke-RAG Admin{% endblock %}
+{% block title %}Agenten · Reineke-RAG Admin{% endblock %}
 {% block content %}
 <div class="d-flex align-items-center justify-content-between mb-3">
-  <h1 class="h3 m-0">Mandanten &amp; Projekte</h1>
+  <h1 class="h3 m-0">Agenten &amp; Kollektionen</h1>
   <button class="btn btn-sm btn-outline-secondary"
           hx-get="/admin/api/tenants"
           hx-target="#tenants-panel"
@@ -10,6 +10,10 @@
     Aktualisieren
   </button>
 </div>
+<p class="text-secondary">
+  Pro <code>(Mandant, Projekt)</code> ein Agent — vorkonfigurierte Pipe-Function
+  und optionaler Persona-Prompt für OpenWebUI.
+</p>
 
 <div id="tenants-panel"
      hx-get="/admin/api/tenants"

@@ -110,6 +110,7 @@ class OllamaClient:
         body = {
             "model": model or settings.EMBEDDING_MODEL,
             "prompt": text,
+            "keep_alive": settings.OLLAMA_KEEP_ALIVE,
         }
         resp = await self._request("POST", "/api/embeddings", json=body)
         data = resp.json()
@@ -138,6 +139,7 @@ class OllamaClient:
             "model": model or settings.CHAT_MODEL,
             "messages": messages,
             "stream": False,
+            "keep_alive": settings.OLLAMA_KEEP_ALIVE,
             "options": {
                 "temperature": (
                     temperature if temperature is not None else settings.CHAT_TEMPERATURE

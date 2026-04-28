@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import session_scope
-from .models import ChatMessage, ChatSession
+from .models import ChatMessage, ChatSession, TenantProjectPrompt
 from .ollama_client import OllamaClient
 from .qdrant_store import SearchHit
 from .retrieval_service import RetrievalService
@@ -28,7 +28,7 @@ from .schemas import ChatResponse, ChatSource
 from .utils import new_id
 
 
-SYSTEM_PROMPT = (
+DEFAULT_SYSTEM_PROMPT = (
     "Du bist ein lokaler RAG-Assistent. Beantworte die Frage des Nutzers "
     "ausschließlich auf Basis des bereitgestellten Kontexts. "
     "\n\n"
@@ -47,6 +47,9 @@ SYSTEM_PROMPT = (
     "Antworte auf Deutsch. Gib am Ende immer die verwendeten Quellen mit "
     "Datei und — falls vorhanden — Seite oder Sheet/Zeilen aus."
 )
+# Backwards-compatible alias used by tests + previews. The *runtime* prompt
+# may differ if the admin has set an override (see system_prompt_store).
+SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
 
 NO_CONTEXT_ANSWER = "Das steht nicht eindeutig in den bereitgestellten Dokumenten."
 
@@ -92,6 +95,49 @@ class ChatService:
             # session_scope() commits on exit; capture the id before then so
             # we don't access an attribute on a detached instance later.
             return new_session.id
+
+    # ----- DB lookup: per-collection persona prompt ------------------------
+
+    def _load_persona(self, tenant: str, project: str) -> str:
+        """Return the persona prompt for ``(tenant, project)`` or empty string."""
+        with self.session_factory() as db:
+            row = db.get(TenantProjectPrompt, (tenant, project))
+            if row is None:
+                return ""
+            return (row.persona_prompt or "").strip()
+
+    def _load_chat_model(self, tenant: str, project: str) -> Optional[str]:
+        """Return the per-agent chat model override or ``None`` (=use global)."""
+        with self.session_factory() as db:
+            row = db.get(TenantProjectPrompt, (tenant, project))
+            if row is None:
+                return None
+            value = (row.chat_model or "").strip()
+            return value or None
+
+    @staticmethod
+    def _compose_system_prompt(
+        tenant: str,
+        project: str,
+        persona: str,
+        global_prompt: Optional[str] = None,
+    ) -> str:
+        """Combine the global anti-hallucination prompt with an optional
+        collection-specific persona block.
+
+        The global prompt is always first — persona can extend, never override.
+        ``global_prompt`` defaults to the in-code default; the runtime path
+        passes the override-resolved value from ``system_prompt_store``.
+        """
+        base = global_prompt if global_prompt is not None else SYSTEM_PROMPT
+        if not persona:
+            return base
+        return (
+            f"{base}\n\n"
+            f"---\n"
+            f"Profil für die Kollektion '{tenant} / {project}':\n"
+            f"{persona}"
+        )
 
     # ----- DB phase B': load recent conversation history ------------------
 
@@ -282,11 +328,18 @@ class ChatService:
         history = self._load_recent_messages(
             resolved_session_id, turns=settings.CHAT_HISTORY_TURNS
         )
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        persona = self._load_persona(tenant, project)
+        # Local import to avoid circular dependency at module load time.
+        from .system_prompt_store import get_system_prompt
+        system_message = self._compose_system_prompt(
+            tenant, project, persona, global_prompt=get_system_prompt()
+        )
+        messages = [{"role": "system", "content": system_message}]
         messages.extend(history)
         messages.append({"role": "user", "content": user_prompt})
 
-        raw_answer = await self.ollama.chat(messages)
+        chat_model_override = self._load_chat_model(tenant, project)
+        raw_answer = await self.ollama.chat(messages, model=chat_model_override)
         answer = self._ensure_sources_appended(raw_answer.strip(), sources_block)
 
         # Phase C — short-lived DB write again

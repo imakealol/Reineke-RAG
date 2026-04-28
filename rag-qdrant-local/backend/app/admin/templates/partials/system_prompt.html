@@ -1,0 +1,58 @@
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-body fw-semibold d-flex justify-content-between align-items-center">
+    <span>
+      Globaler System-Prompt
+      {% if is_override %}
+        <span class="badge bg-info-subtle text-info border ms-2">override</span>
+      {% else %}
+        <span class="badge bg-secondary-subtle text-secondary border ms-2">default</span>
+      {% endif %}
+    </span>
+    <span class="small text-secondary">
+      Wird vor jedem Chat als <code>role: system</code> an Ollama gesendet.
+    </span>
+  </div>
+  <div class="card-body">
+    {% if error %}
+    <div class="alert alert-danger py-2 small">{{ error }}</div>
+    {% elif saved %}
+    <div class="alert alert-success py-2 small">Gespeichert.</div>
+    {% endif %}
+
+    <form hx-post="/admin/api/system-prompt"
+          hx-target="closest div.card"
+          hx-swap="outerHTML">
+      <textarea class="form-control font-monospace small"
+                name="system_prompt"
+                rows="14"
+                maxlength="{{ max_chars }}"
+                placeholder="Lass leer und speichere, um auf den Default zurückzusetzen.">{{ global_prompt }}</textarea>
+      <div class="d-flex justify-content-between align-items-center mt-2 small">
+        <span class="text-secondary">
+          Max. {{ max_chars }} Zeichen. Persona-Prompts pro Agent (siehe
+          <a href="/admin/agenten">Agenten</a>) werden hieran <em>angehängt</em>,
+          nicht überschrieben.
+        </span>
+        <div class="d-flex gap-2">
+          {% if is_override %}
+          <button type="button" class="btn btn-sm btn-outline-secondary"
+                  hx-post="/admin/api/system-prompt/reset"
+                  hx-target="closest div.card"
+                  hx-swap="outerHTML"
+                  hx-confirm="Override löschen und auf den Default zurücksetzen?">
+            Auf Default zurücksetzen
+          </button>
+          {% endif %}
+          <button type="submit" class="btn btn-sm btn-primary">Speichern</button>
+        </div>
+      </div>
+    </form>
+  </div>
+  <div class="card-footer bg-body small text-secondary">
+    Default-Prompt liegt fest in <code>chat_service.DEFAULT_SYSTEM_PROMPT</code>.
+    {% if is_override %}
+      Der gespeicherte Override überschreibt diesen Default zur Laufzeit; bei
+      &quot;Auf Default zurücksetzen&quot; wird der Code-Default wieder aktiv.
+    {% endif %}
+  </div>
+</div>
