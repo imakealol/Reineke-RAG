@@ -1,0 +1,104 @@
+{% if error %}
+<div class="alert alert-danger" role="alert">{{ error }}</div>
+{% elif saved %}
+<div class="alert alert-success py-2" role="alert">
+  <strong>{{ saved }}</strong> gespeichert.
+</div>
+{% endif %}
+
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-body fw-semibold">Editierbare Einstellungen</div>
+  <div class="table-responsive">
+    <table class="table table-sm m-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th style="width: 28%;">Schlüssel</th>
+          <th>Wert</th>
+          <th style="width: 22%;" class="text-end">Aktion</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in editable %}
+        <tr>
+          <td class="font-monospace small align-top">
+            <div class="fw-semibold">{{ r.key }}</div>
+            <div class="text-secondary small fw-normal">{{ r.label }}</div>
+            {% if r.help %}<div class="text-secondary small fw-normal">{{ r.help }}</div>{% endif %}
+            {% if r.warning %}<div class="text-warning small fw-normal mt-1">⚠ {{ r.warning }}</div>{% endif %}
+          </td>
+          <td>
+            <form class="d-flex gap-2"
+                  hx-post="/admin/api/config/{{ r.key }}"
+                  hx-target="#config-panel"
+                  hx-swap="innerHTML">
+              {% if r.type == 'enum' %}
+              <select class="form-select form-select-sm" name="value">
+                {% for c in r.choices %}
+                <option value="{{ c }}" {% if c == r.value|string %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+              </select>
+              {% elif r.type == 'int' %}
+              <input class="form-control form-control-sm" name="value" type="number" step="1"
+                     {% if r.minimum is not none %}min="{{ r.minimum|int }}"{% endif %}
+                     {% if r.maximum is not none %}max="{{ r.maximum|int }}"{% endif %}
+                     value="{{ r.value }}" required>
+              {% elif r.type == 'float' %}
+              <input class="form-control form-control-sm" name="value" type="number" step="0.01"
+                     {% if r.minimum is not none %}min="{{ r.minimum }}"{% endif %}
+                     {% if r.maximum is not none %}max="{{ r.maximum }}"{% endif %}
+                     value="{{ r.value }}" required>
+              {% else %}
+              <input class="form-control form-control-sm" name="value" type="text"
+                     value="{{ r.value }}" required>
+              {% endif %}
+              <button class="btn btn-sm btn-primary" type="submit" title="Speichern">↳</button>
+            </form>
+          </td>
+          <td class="text-end">
+            {% if r.overridden %}
+              <span class="badge bg-info-subtle text-info border me-1">override</span>
+              <button class="btn btn-sm btn-outline-secondary"
+                      hx-post="/admin/api/config/{{ r.key }}/reset"
+                      hx-target="#config-panel"
+                      hx-swap="innerHTML"
+                      title="Auf .env-Default zurücksetzen">↺</button>
+            {% else %}
+              <span class="text-secondary small">env</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-body fw-semibold">
+    Read-only · nur über <code>.env</code> änderbar
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm m-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th style="width: 28%;">Schlüssel</th>
+          <th>Wert</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in readonly %}
+        <tr>
+          <td class="font-monospace small">{{ r.key }}</td>
+          <td class="text-break">
+            {% if r.value %}
+              <code>{{ r.value }}</code>
+            {% else %}
+              <span class="text-secondary fst-italic">(leer)</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>

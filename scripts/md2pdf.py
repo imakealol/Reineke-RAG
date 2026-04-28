@@ -1,339 +1,331 @@
 #!/usr/bin/env python3
-"""Convert a Markdown file to a styled HTML file.
+"""Render a Markdown file to a paginated, well-styled PDF using WeasyPrint.
 
-Handles the subset of Markdown used in Reineke-RAG docs: ATX headings (1-4),
-paragraphs, bold/italic/code inline, fenced code blocks, GitHub-style tables,
-unordered and ordered lists, blockquotes, horizontal rules, and links.
-
-HTML output is print-oriented: A4, generous typography, page break before h1.
+Usage:
+    python scripts/md2pdf.py docs/TECHNISCHE_DOKUMENTATION.md pdf/TECHNISCHE_DOKUMENTATION.pdf
 """
 from __future__ import annotations
 
-import html
+import argparse
 import re
 import sys
 from pathlib import Path
 
-CSS = r"""
-@page { size: A4; margin: 20mm 18mm; }
-html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-body {
-  font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
-  font-size: 10.5pt;
-  line-height: 1.45;
-  color: #1a1a1a;
-  max-width: none;
+import markdown
+from weasyprint import HTML, CSS
+
+CSS_TEMPLATE = """
+@page {
+    size: A4;
+    margin: 22mm 18mm 24mm 18mm;
+    @bottom-center {
+        content: "Reineke-RAG · Technische Dokumentation · Seite " counter(page) " / " counter(pages);
+        font-family: 'Helvetica', 'Arial', sans-serif;
+        font-size: 9pt;
+        color: #666;
+    }
+    @top-right {
+        content: "Stand 2026-04-28";
+        font-family: 'Helvetica', 'Arial', sans-serif;
+        font-size: 8.5pt;
+        color: #888;
+    }
 }
-h1, h2, h3, h4 { color: #0b2545; line-height: 1.25; margin-top: 1.2em; }
+
+@page :first {
+    @top-right { content: ""; }
+    @bottom-center { content: ""; }
+}
+
+@page schema {
+    size: A4 landscape;
+    margin: 12mm 12mm 14mm 12mm;
+    @bottom-center {
+        content: "Reineke-RAG · Architektur-Schema · Seite " counter(page);
+        font-family: 'Helvetica', 'Arial', sans-serif;
+        font-size: 9pt;
+        color: #666;
+    }
+}
+
+html, body {
+    font-family: 'Helvetica', 'Arial', sans-serif;
+    font-size: 10pt;
+    line-height: 1.45;
+    color: #1a1a1a;
+}
+
 h1 {
-  font-size: 22pt;
-  border-bottom: 2px solid #0b2545;
-  padding-bottom: 0.2em;
-  margin-top: 0;
-  page-break-before: always;
+    font-size: 20pt;
+    color: #1f4e79;
+    border-bottom: 2px solid #1f4e79;
+    padding-bottom: 4pt;
+    margin-top: 24pt;
+    margin-bottom: 12pt;
+    page-break-before: always;
 }
-h1:first-of-type { page-break-before: avoid; }
-h2 { font-size: 16pt; border-bottom: 1px solid #c7ccd5; padding-bottom: 0.15em; }
-h3 { font-size: 13pt; }
-h4 { font-size: 11.5pt; color: #2d3e5c; }
-p { margin: 0.6em 0; }
-a { color: #0f6fff; text-decoration: none; }
-code {
-  font-family: "SF Mono", Menlo, Consolas, monospace;
-  font-size: 0.92em;
-  background: #f3f5f8;
-  padding: 1px 4px;
-  border-radius: 3px;
+
+h1:first-of-type {
+    page-break-before: avoid;
 }
-pre {
-  background: #f3f5f8;
-  border: 1px solid #e1e5eb;
-  border-radius: 4px;
-  padding: 10px 12px;
-  overflow-x: auto;
-  font-size: 9pt;
-  line-height: 1.4;
-  page-break-inside: avoid;
+
+h2 {
+    font-size: 14pt;
+    color: #1f4e79;
+    margin-top: 18pt;
+    margin-bottom: 6pt;
+    border-bottom: 1px solid #cfd8e3;
+    padding-bottom: 2pt;
 }
-pre code { background: transparent; padding: 0; font-size: inherit; }
-blockquote {
-  margin: 0.8em 0;
-  padding: 0.2em 0.9em;
-  border-left: 3px solid #0f6fff;
-  background: #f6faff;
-  color: #3a4352;
+
+h3 {
+    font-size: 11.5pt;
+    color: #2e7d32;
+    margin-top: 12pt;
+    margin-bottom: 4pt;
 }
-ul, ol { margin: 0.5em 0 0.5em 1.4em; padding: 0; }
-li { margin: 0.15em 0; }
-hr { border: 0; border-top: 1px solid #c7ccd5; margin: 1.4em 0; }
+
+p {
+    margin: 4pt 0 6pt 0;
+    text-align: justify;
+}
+
+ul, ol {
+    margin: 4pt 0 8pt 0;
+    padding-left: 18pt;
+}
+
+li {
+    margin-bottom: 2pt;
+}
+
 table {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 9.5pt;
-  margin: 0.8em 0;
-  page-break-inside: avoid;
+    border-collapse: collapse;
+    width: 100%;
+    margin: 6pt 0 12pt 0;
+    font-size: 9pt;
+    page-break-inside: avoid;
 }
-th, td {
-  border: 1px solid #c7ccd5;
-  padding: 5px 8px;
-  text-align: left;
-  vertical-align: top;
+
+th {
+    background: #1f4e79;
+    color: #fff;
+    text-align: left;
+    padding: 4pt 6pt;
+    font-weight: bold;
+    border: 0.5pt solid #1f4e79;
 }
-th { background: #eaf0fa; color: #0b2545; font-weight: 600; }
-tr:nth-child(even) td { background: #fafbfc; }
-.cover {
-  text-align: center;
-  margin: 30mm 0 20mm;
-  page-break-after: always;
+
+td {
+    padding: 3.5pt 6pt;
+    border: 0.5pt solid #cfd8e3;
+    vertical-align: top;
 }
-.cover h1 { border: 0; font-size: 32pt; margin: 0; page-break-before: avoid; }
-.cover .subtitle { font-size: 13pt; color: #5a6478; margin-top: 6pt; }
-.cover .meta { font-size: 10pt; color: #8791a3; margin-top: 26pt; }
+
+tr:nth-child(even) td {
+    background: #f5f8fb;
+}
+
+code {
+    font-family: 'Menlo', 'Consolas', monospace;
+    font-size: 8.8pt;
+    background: #f1f3f5;
+    padding: 1pt 3pt;
+    border-radius: 2pt;
+    color: #b22222;
+}
+
+pre {
+    background: #f1f3f5;
+    border-left: 3pt solid #1f4e79;
+    padding: 8pt 10pt;
+    font-family: 'Menlo', 'Consolas', monospace;
+    font-size: 8.5pt;
+    line-height: 1.35;
+    overflow-x: auto;
+    page-break-inside: avoid;
+    border-radius: 2pt;
+}
+
+pre code {
+    background: transparent;
+    color: #1a1a1a;
+    padding: 0;
+}
+
+blockquote {
+    border-left: 3pt solid #bf8a00;
+    margin: 6pt 0;
+    padding: 4pt 10pt;
+    background: #fff8e1;
+    color: #444;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid #cfd8e3;
+    margin: 16pt 0;
+}
+
+img.architecture {
+    width: 100%;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+}
+
+.titlepage {
+    text-align: center;
+    padding-top: 60mm;
+    page-break-after: always;
+}
+
+.titlepage h1 {
+    font-size: 30pt;
+    border: none;
+    page-break-before: avoid;
+    margin: 0 0 8pt 0;
+}
+
+.titlepage .subtitle {
+    font-size: 16pt;
+    color: #444;
+    margin-bottom: 60pt;
+}
+
+.titlepage .meta {
+    font-size: 11pt;
+    color: #555;
+    margin-top: 80pt;
+}
+
+.titlepage .badge {
+    display: inline-block;
+    margin-top: 18pt;
+    padding: 4pt 12pt;
+    background: #1f4e79;
+    color: #fff;
+    border-radius: 4pt;
+    font-size: 10pt;
+    letter-spacing: 0.5pt;
+}
+
+.schema-page {
+    page: schema;
+    page-break-before: always;
+    page-break-after: avoid;
+    text-align: center;
+}
+
+.schema-page svg,
+.schema-page img {
+    width: 100%;
+    max-height: 180mm;
+    height: auto;
+    display: block;
+    margin: 0 auto;
+}
+"""
+
+TITLE_PAGE_HTML = """
+<section class="titlepage">
+    <h1>Reineke-RAG</h1>
+    <div class="subtitle">Technische Dokumentation</div>
+    <div class="subtitle" style="font-size:12pt; color:#666;">
+        Lokales, multi-tenant Retrieval-Augmented-Generation-System<br/>
+        (rag-qdrant-local)
+    </div>
+    <div class="badge">100 % offline · on-premise</div>
+    <div class="meta">
+        Reineke-Technik<br/>
+        Stand 28. April 2026<br/>
+        Code-Stand: 17 Module · 3.036 Python-Zeilen · 9 HTTP-Endpunkte
+    </div>
+</section>
 """
 
 
-def escape(s: str) -> str:
-    return html.escape(s, quote=False)
+def render_schema_page(svg_path: Path) -> str:
+    svg_text = svg_path.read_text(encoding="utf-8")
+    # Remove XML declaration so it can be inlined inside HTML
+    svg_text = re.sub(r"<\?xml[^?]*\?>", "", svg_text).strip()
+    return (
+        '<section class="schema-page">'
+        f"{svg_text}"
+        "</section>"
+    )
 
 
-def inline(text: str) -> str:
-    """Inline formatting: code, bold, italic, links. Order matters."""
+def md_to_html(md_path: Path, schema_svg: Path | None) -> str:
+    text = md_path.read_text(encoding="utf-8")
 
-    # Protect inline code first so its content isn't re-parsed.
-    placeholders: list[str] = []
+    # Strip YAML front matter if present (we render our own title page)
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        if end != -1:
+            text = text[end + 4 :].lstrip()
 
-    def stash_code(m: re.Match[str]) -> str:
-        placeholders.append(f"<code>{escape(m.group(1))}</code>")
-        return f"\x00CODE{len(placeholders) - 1}\x00"
-
-    text = re.sub(r"`([^`]+)`", stash_code, text)
-
-    # Escape remaining HTML special chars.
-    text = escape(text)
-
-    # Links: [text](url)
+    # Replace the architecture-schema image reference with a placeholder
+    # so we can inject the schema as its own landscape page.
+    schema_marker = "<!-- SCHEMA_PAGE -->"
     text = re.sub(
-        r"\[([^\]]+)\]\(([^)]+)\)",
-        lambda m: f'<a href="{m.group(2)}">{m.group(1)}</a>',
+        r"!\[Architektur-Schema\]\([^)]+\)",
+        schema_marker,
         text,
     )
 
-    # Bold **x**
-    text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
-
-    # Italic *x* (but not ** which has already been replaced)
-    text = re.sub(r"(?<![*])\*([^*\n]+)\*(?!\*)", r"<em>\1</em>", text)
-
-    # Restore code.
-    for i, repl in enumerate(placeholders):
-        text = text.replace(f"\x00CODE{i}\x00", repl)
-
-    return text
-
-
-HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
-FENCE_RE = re.compile(r"^```")
-TABLE_SEP_RE = re.compile(r"^\|?\s*:?-{2,}:?(\s*\|\s*:?-{2,}:?)*\s*\|?\s*$")
-ORDERED_RE = re.compile(r"^(\s*)(\d+)\.\s+(.*)$")
-UNORDERED_RE = re.compile(r"^(\s*)[-*]\s+(.*)$")
-BLOCKQUOTE_RE = re.compile(r"^>\s?(.*)$")
-HR_RE = re.compile(r"^\s*(?:-{3,}|\*{3,}|_{3,})\s*$")
-
-
-def parse_table_row(line: str) -> list[str]:
-    line = line.strip()
-    if line.startswith("|"):
-        line = line[1:]
-    if line.endswith("|"):
-        line = line[:-1]
-    return [c.strip() for c in line.split("|")]
-
-
-def render(md: str) -> str:
-    lines = md.splitlines()
-    out: list[str] = []
-    i = 0
-    n = len(lines)
-
-    def close_list(stack: list[tuple[str, int]]) -> None:
-        while stack:
-            tag, _ = stack.pop()
-            out.append(f"</{tag}>")
-
-    list_stack: list[tuple[str, int]] = []  # (tag, indent)
-
-    def flush_lists() -> None:
-        close_list(list_stack)
-
-    while i < n:
-        line = lines[i]
-
-        # Fenced code block.
-        if FENCE_RE.match(line):
-            flush_lists()
-            i += 1
-            buf: list[str] = []
-            while i < n and not FENCE_RE.match(lines[i]):
-                buf.append(lines[i])
-                i += 1
-            i += 1  # skip closing fence
-            out.append(f"<pre><code>{escape(chr(10).join(buf))}</code></pre>")
-            continue
-
-        # Horizontal rule.
-        if HR_RE.match(line) and line.strip() != "":
-            # But only if the previous line is blank (to avoid confusing it with
-            # setext underlines — we don't support those anyway).
-            flush_lists()
-            out.append("<hr>")
-            i += 1
-            continue
-
-        # ATX heading.
-        m = HEADING_RE.match(line)
-        if m:
-            flush_lists()
-            level = len(m.group(1))
-            text = inline(m.group(2).rstrip("#").strip())
-            out.append(f"<h{level}>{text}</h{level}>")
-            i += 1
-            continue
-
-        # Table: current line starts with "|" AND the next line is a separator.
-        if line.lstrip().startswith("|") and i + 1 < n and TABLE_SEP_RE.match(lines[i + 1]):
-            flush_lists()
-            header = parse_table_row(line)
-            i += 2  # header + separator
-            body_rows: list[list[str]] = []
-            while i < n and lines[i].lstrip().startswith("|"):
-                body_rows.append(parse_table_row(lines[i]))
-                i += 1
-            thead = "".join(f"<th>{inline(c)}</th>" for c in header)
-            tbody = "".join(
-                "<tr>" + "".join(f"<td>{inline(c)}</td>" for c in row) + "</tr>"
-                for row in body_rows
-            )
-            out.append(f"<table><thead><tr>{thead}</tr></thead><tbody>{tbody}</tbody></table>")
-            continue
-
-        # Blockquote (possibly multi-line).
-        m = BLOCKQUOTE_RE.match(line)
-        if m:
-            flush_lists()
-            buf = [m.group(1)]
-            i += 1
-            while i < n:
-                mm = BLOCKQUOTE_RE.match(lines[i])
-                if not mm:
-                    break
-                buf.append(mm.group(1))
-                i += 1
-            content = "<br>".join(inline(b) for b in buf)
-            out.append(f"<blockquote>{content}</blockquote>")
-            continue
-
-        # Ordered list item.
-        m = ORDERED_RE.match(line)
-        if m:
-            indent = len(m.group(1))
-            item = inline(m.group(3))
-            while list_stack and list_stack[-1][1] > indent:
-                tag, _ = list_stack.pop()
-                out.append(f"</{tag}>")
-            if not list_stack or list_stack[-1][0] != "ol" or list_stack[-1][1] != indent:
-                if list_stack and list_stack[-1][1] == indent:
-                    tag, _ = list_stack.pop()
-                    out.append(f"</{tag}>")
-                out.append("<ol>")
-                list_stack.append(("ol", indent))
-            out.append(f"<li>{item}</li>")
-            i += 1
-            continue
-
-        # Unordered list item.
-        m = UNORDERED_RE.match(line)
-        if m:
-            indent = len(m.group(1))
-            item = inline(m.group(2))
-            while list_stack and list_stack[-1][1] > indent:
-                tag, _ = list_stack.pop()
-                out.append(f"</{tag}>")
-            if not list_stack or list_stack[-1][0] != "ul" or list_stack[-1][1] != indent:
-                if list_stack and list_stack[-1][1] == indent:
-                    tag, _ = list_stack.pop()
-                    out.append(f"</{tag}>")
-                out.append("<ul>")
-                list_stack.append(("ul", indent))
-            out.append(f"<li>{item}</li>")
-            i += 1
-            continue
-
-        # Blank line: closes lists, otherwise nothing.
-        if line.strip() == "":
-            flush_lists()
-            i += 1
-            continue
-
-        # Paragraph (collect consecutive non-blank, non-special lines).
-        flush_lists()
-        buf = [line]
-        i += 1
-        while i < n:
-            nxt = lines[i]
-            if nxt.strip() == "":
-                break
-            if (
-                HEADING_RE.match(nxt)
-                or FENCE_RE.match(nxt)
-                or HR_RE.match(nxt)
-                or BLOCKQUOTE_RE.match(nxt)
-                or ORDERED_RE.match(nxt)
-                or UNORDERED_RE.match(nxt)
-                or (
-                    nxt.lstrip().startswith("|")
-                    and i + 1 < n
-                    and TABLE_SEP_RE.match(lines[i + 1])
-                )
-            ):
-                break
-            buf.append(nxt)
-            i += 1
-        out.append(f"<p>{inline(' '.join(s.strip() for s in buf))}</p>")
-
-    flush_lists()
-    return "\n".join(out)
-
-
-def wrap(title: str, body_html: str, subtitle: str | None = None) -> str:
-    cover = (
-        f'<div class="cover"><h1>{escape(title)}</h1>'
-        + (f'<div class="subtitle">{escape(subtitle)}</div>' if subtitle else "")
-        + '<div class="meta">Reineke-RAG &mdash; 2026</div>'
-        + "</div>"
+    body_html = markdown.markdown(
+        text,
+        extensions=["tables", "fenced_code", "sane_lists", "attr_list"],
     )
+
+    schema_html = render_schema_page(schema_svg) if schema_svg else ""
+    body_html = body_html.replace(
+        f"<p>{schema_marker}</p>", schema_html
+    ).replace(schema_marker, schema_html)
+
     return (
         "<!doctype html><html><head><meta charset='utf-8'>"
-        f"<title>{escape(title)}</title>"
-        f"<style>{CSS}</style></head><body>"
-        + cover
+        "<title>Reineke-RAG · Technische Dokumentation</title>"
+        "</head><body>"
+        + TITLE_PAGE_HTML
         + body_html
         + "</body></html>"
     )
 
 
-def convert(md_path: Path, html_path: Path, title: str, subtitle: str | None) -> None:
-    md = md_path.read_text(encoding="utf-8")
-    body = render(md)
-    html_path.write_text(wrap(title, body, subtitle), encoding="utf-8")
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("input", type=Path, help="Markdown source")
+    parser.add_argument("output", type=Path, help="PDF target")
+    parser.add_argument(
+        "--schema",
+        type=Path,
+        default=None,
+        help="Optional SVG inserted as own landscape page",
+    )
+    args = parser.parse_args()
+
+    if not args.input.exists():
+        print(f"Input not found: {args.input}", file=sys.stderr)
+        return 2
+
+    schema_svg = args.schema
+    if schema_svg is None:
+        guess = args.input.parent / "architecture-schema.svg"
+        if guess.exists():
+            schema_svg = guess
+
+    html = md_to_html(args.input, schema_svg)
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+
+    HTML(string=html, base_url=str(args.input.parent)).write_pdf(
+        target=str(args.output),
+        stylesheets=[CSS(string=CSS_TEMPLATE)],
+    )
+    print(f"Wrote {args.output} ({args.output.stat().st_size / 1024:.1f} KiB)")
+    return 0
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("usage: md2pdf.py input.md output.html [title] [subtitle]", file=sys.stderr)
-        sys.exit(2)
-    inp = Path(sys.argv[1])
-    outp = Path(sys.argv[2])
-    title = sys.argv[3] if len(sys.argv) > 3 else inp.stem
-    subtitle = sys.argv[4] if len(sys.argv) > 4 else None
-    convert(inp, outp, title, subtitle)
-    print(f"wrote {outp}")
+    raise SystemExit(main())

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Konfiguration · Reineke-RAG Admin{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h3 m-0">Konfiguration</h1>
+  <button class="btn btn-sm btn-outline-secondary"
+          hx-get="/admin/api/config"
+          hx-target="#config-panel"
+          hx-swap="innerHTML">Aktualisieren</button>
+</div>
+<p class="text-secondary">
+  Editierbare Werte werden zur Laufzeit angewendet und persistiert. Infrastruktur-
+  und Sicherheitsfelder (Hosts, Pfade, API-Keys) sind nur über <code>.env</code>
+  änderbar und erfordern einen Neustart.
+</p>
+
+<div id="config-panel"
+     hx-get="/admin/api/config"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  <p class="text-secondary">Lade…</p>
+</div>
+
+<hr class="my-4">
+
+<h2 class="h4 mb-2">OpenWebUI · Pipe-Function</h2>
+<p class="text-secondary">
+  Diese Pipe-Function bindet den Reineke-RAG-Backend in OpenWebUI ein. In OpenWebUI
+  unter <em>Workspace → Functions → +</em> einfügen, speichern und aktivieren.
+  Anschließend in den Function-Settings <code>rag_url</code>, <code>tenant</code>
+  und <code>project</code> setzen.
+</p>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-body d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">openwebui_pipe.py</span>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-primary" id="copy-pipe-btn">
+        In Zwischenablage kopieren
+      </button>
+      <a class="btn btn-sm btn-outline-secondary"
+         href="/admin/api/openwebui-pipe.py"
+         download>Herunterladen</a>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <pre id="pipe-source"
+         class="m-0 p-3 small bg-body-tertiary"
+         style="max-height: 30rem; overflow: auto; white-space: pre-wrap;">Lade…</pre>
+  </div>
+</div>
+
+<script>
+(async () => {
+  const pre = document.getElementById('pipe-source');
+  const btn = document.getElementById('copy-pipe-btn');
+  let pipeText = '';
+  try {
+    const resp = await fetch('/admin/api/openwebui-pipe.py');
+    pipeText = await resp.text();
+    pre.textContent = pipeText;
+  } catch (err) {
+    pre.textContent = 'Fehler beim Laden: ' + err;
+  }
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(pipeText);
+      const original = btn.textContent;
+      btn.textContent = 'Kopiert ✓';
+      btn.classList.replace('btn-primary', 'btn-success');
+      setTimeout(() => {
+        btn.textContent = original;
+        btn.classList.replace('btn-success', 'btn-primary');
+      }, 1500);
+    } catch (err) {
+      alert('Kopieren fehlgeschlagen: ' + err);
+    }
+  });
+})();
+</script>
+{% endblock %}

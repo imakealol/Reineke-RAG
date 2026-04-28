@@ -1,0 +1,115 @@
+{% if not rows %}
+<p class="text-secondary m-0">Noch kein Zeitplan konfiguriert.</p>
+{% else %}
+<div class="table-responsive">
+  <table class="table table-sm align-middle">
+    <thead>
+      <tr class="text-secondary small text-uppercase">
+        <th>Mandant / Projekt</th>
+        <th>Pfad</th>
+        <th class="text-end">Uhrzeit (UTC)</th>
+        <th>Optionen</th>
+        <th>Status</th>
+        <th>Letzter Lauf</th>
+        <th class="text-end">Aktionen</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr class="{% if not r.enabled %}text-secondary{% endif %}">
+        <td>
+          <div class="fw-semibold">{{ r.tenant }}</div>
+          <div class="small text-secondary">{{ r.project }}</div>
+        </td>
+        <td>
+          <form class="d-flex gap-1"
+                hx-post="/admin/api/schedules/{{ r.id }}/update"
+                hx-target="#schedules-list"
+                hx-swap="innerHTML">
+            <input class="form-control form-control-sm"
+                   name="base_path"
+                   value="{{ r.base_path }}"
+                   style="min-width: 18rem;">
+            <input type="hidden" name="time" value="{{ '%02d:%02d' % (r.hour, r.minute) }}">
+            <input type="hidden" name="recursive" {% if r.recursive %}value="on"{% endif %}>
+            <input type="hidden" name="reindex_changed_only" {% if r.reindex_changed_only %}value="on"{% endif %}>
+            <button class="btn btn-sm btn-outline-secondary" type="submit" title="Pfad speichern">↳</button>
+          </form>
+        </td>
+        <td class="text-end">
+          <form class="d-flex gap-1 justify-content-end"
+                hx-post="/admin/api/schedules/{{ r.id }}/update"
+                hx-target="#schedules-list"
+                hx-swap="innerHTML">
+            <input class="form-control form-control-sm" name="time"
+                   type="time" value="{{ '%02d:%02d' % (r.hour, r.minute) }}"
+                   style="width: 7rem;">
+            <input type="hidden" name="base_path" value="{{ r.base_path }}">
+            <input type="hidden" name="recursive" {% if r.recursive %}value="on"{% endif %}>
+            <input type="hidden" name="reindex_changed_only" {% if r.reindex_changed_only %}value="on"{% endif %}>
+            <button class="btn btn-sm btn-outline-secondary" type="submit" title="Uhrzeit speichern">↳</button>
+          </form>
+        </td>
+        <td class="small">
+          {% if r.recursive %}<span class="badge bg-secondary-subtle text-secondary border">rekursiv</span>{% endif %}
+          {% if r.reindex_changed_only %}<span class="badge bg-secondary-subtle text-secondary border">delta</span>{% endif %}
+        </td>
+        <td>
+          {% if r.enabled %}
+            <span class="badge bg-success-subtle text-success border">aktiv</span>
+          {% else %}
+            <span class="badge bg-secondary-subtle text-secondary border">pausiert</span>
+          {% endif %}
+        </td>
+        <td class="small">
+          {% if r.last_run_at %}
+            <div>
+              {{ r.last_run_at.strftime('%Y-%m-%d %H:%M UTC') }}
+            </div>
+            <div>
+              {% if r.last_status == 'completed' %}
+                <span class="text-success">✓ {{ r.last_indexed }} idx · {{ r.last_skipped }} skip · {{ r.last_chunks }} chunks</span>
+              {% elif r.last_status == 'completed_with_errors' %}
+                <span class="text-warning">⚠ {{ r.last_indexed }} idx · {{ r.last_failed }} fail</span>
+              {% elif r.last_status == 'failed' %}
+                <span class="text-danger" title="{{ r.last_error or '' }}">✕ Fehler</span>
+              {% else %}
+                {{ r.last_status }}
+              {% endif %}
+            </div>
+            {% if r.last_error %}
+              <div class="text-danger small text-truncate" style="max-width: 18rem;" title="{{ r.last_error }}">{{ r.last_error }}</div>
+            {% endif %}
+          {% else %}
+            <span class="text-secondary">— noch nie gelaufen —</span>
+          {% endif %}
+        </td>
+        <td class="text-end text-nowrap">
+          <button class="btn btn-sm btn-outline-primary"
+                  hx-post="/admin/api/schedules/{{ r.id }}/run"
+                  hx-target="#schedules-list"
+                  hx-swap="innerHTML"
+                  title="Jetzt ausführen">▶</button>
+          <button class="btn btn-sm btn-outline-secondary"
+                  hx-post="/admin/api/schedules/{{ r.id }}/toggle"
+                  hx-target="#schedules-list"
+                  hx-swap="innerHTML"
+                  title="{% if r.enabled %}Pausieren{% else %}Aktivieren{% endif %}">
+            {% if r.enabled %}⏸{% else %}▶{% endif %}
+          </button>
+          <button class="btn btn-sm btn-outline-danger"
+                  hx-delete="/admin/api/schedules/{{ r.id }}"
+                  hx-target="#schedules-list"
+                  hx-swap="innerHTML"
+                  hx-confirm="Diesen Zeitplan wirklich löschen?"
+                  title="Löschen">✕</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="text-secondary small mb-0">
+  Tipp: Pfad oder Uhrzeit ändern und mit ↳ bestätigen — der Scheduler übernimmt die neuen Werte sofort.
+</p>
+{% endif %}

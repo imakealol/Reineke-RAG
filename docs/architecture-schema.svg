@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 780" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#444"/>
+    </marker>
+    <marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#1f4e79"/>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#2e7d32"/>
+    </marker>
+    <style>
+      .title       { font-size: 22px; font-weight: bold; fill: #1a1a1a; }
+      .legend      { font-size: 11px; fill: #555; }
+      .layer-label { font-size: 13px; font-weight: bold; fill: #fff; }
+      .box-title   { font-size: 13px; font-weight: bold; fill: #1a1a1a; }
+      .box-text    { font-size: 11px; fill: #333; }
+      .box-meta    { font-size: 10px; fill: #555; font-style: italic; }
+      .flow-label  { font-size: 10px; fill: #1f4e79; font-weight: bold; }
+      .flow-label-g{ font-size: 10px; fill: #2e7d32; font-weight: bold; }
+    </style>
+  </defs>
+
+  <!-- Title -->
+  <text x="550" y="30" text-anchor="middle" class="title">Reineke-RAG · System-Architektur (Offline)</text>
+  <text x="550" y="50" text-anchor="middle" class="legend">Lokale, multi-tenant Retrieval-Augmented-Generation Pipeline · Stand 2026-04-28</text>
+
+  <!-- ===================== CLIENT LAYER ===================== -->
+  <rect x="40" y="75" width="1020" height="80" rx="8" fill="#eef3fb" stroke="#1f4e79" stroke-width="1.5"/>
+  <rect x="40" y="75" width="160" height="80" rx="8" fill="#1f4e79"/>
+  <text x="120" y="118" text-anchor="middle" class="layer-label">Client-Schicht</text>
+
+  <rect x="225" y="92" width="220" height="48" rx="5" fill="#fff" stroke="#1f4e79"/>
+  <text x="335" y="111" text-anchor="middle" class="box-title">Open WebUI</text>
+  <text x="335" y="127" text-anchor="middle" class="box-text">OpenAI-kompatibler Chat-Client</text>
+
+  <rect x="465" y="92" width="220" height="48" rx="5" fill="#fff" stroke="#1f4e79"/>
+  <text x="575" y="111" text-anchor="middle" class="box-title">Browser / cURL</text>
+  <text x="575" y="127" text-anchor="middle" class="box-text">Native /chat- &amp; Verwaltungs-API</text>
+
+  <rect x="705" y="92" width="320" height="48" rx="5" fill="#fff" stroke="#1f4e79"/>
+  <text x="865" y="111" text-anchor="middle" class="box-title">Admin / Skripte</text>
+  <text x="865" y="127" text-anchor="middle" class="box-text">Ingestion, Reindex, Health-Checks</text>
+
+  <!-- ===================== API LAYER ===================== -->
+  <rect x="40" y="180" width="1020" height="105" rx="8" fill="#fff8e1" stroke="#bf8a00" stroke-width="1.5"/>
+  <rect x="40" y="180" width="160" height="105" rx="8" fill="#bf8a00"/>
+  <text x="120" y="225" text-anchor="middle" class="layer-label">API-Schicht</text>
+  <text x="120" y="245" text-anchor="middle" class="legend" fill="#fff">FastAPI · :8000</text>
+
+  <rect x="225" y="195" width="195" height="34" rx="4" fill="#fff" stroke="#bf8a00"/>
+  <text x="322" y="216" text-anchor="middle" class="box-text">GET  /health</text>
+  <rect x="225" y="237" width="195" height="34" rx="4" fill="#fff" stroke="#bf8a00"/>
+  <text x="322" y="258" text-anchor="middle" class="box-text">POST /sources/scan-path</text>
+
+  <rect x="430" y="195" width="195" height="34" rx="4" fill="#fff" stroke="#bf8a00"/>
+  <text x="527" y="216" text-anchor="middle" class="box-text">POST /sources/ingest-path</text>
+  <rect x="430" y="237" width="195" height="34" rx="4" fill="#fff" stroke="#bf8a00"/>
+  <text x="527" y="258" text-anchor="middle" class="box-text">POST /documents/reindex-changed</text>
+
+  <rect x="635" y="195" width="195" height="34" rx="4" fill="#fff" stroke="#bf8a00"/>
+  <text x="732" y="216" text-anchor="middle" class="box-text">GET    /documents</text>
+  <rect x="635" y="237" width="195" height="34" rx="4" fill="#fff" stroke="#bf8a00"/>
+  <text x="732" y="258" text-anchor="middle" class="box-text">DELETE /documents/{id}</text>
+
+  <rect x="840" y="195" width="195" height="34" rx="4" fill="#fff" stroke="#bf8a00"/>
+  <text x="937" y="216" text-anchor="middle" class="box-text">POST /chat</text>
+  <rect x="840" y="237" width="195" height="34" rx="4" fill="#fff" stroke="#bf8a00"/>
+  <text x="937" y="258" text-anchor="middle" class="box-text">/v1/chat/completions · /v1/models</text>
+
+  <!-- ===================== SECURITY GATE ===================== -->
+  <rect x="40" y="305" width="1020" height="40" rx="6" fill="#fdecea" stroke="#c62828" stroke-width="1.5"/>
+  <text x="550" y="330" text-anchor="middle" class="box-title" fill="#c62828">
+    Sicherheits-Gate · path_security.resolve_safe_path()  +  qdrant_store.search() erzwingt tenant/project-Filter
+  </text>
+
+  <!-- ===================== SERVICE LAYER ===================== -->
+  <rect x="40" y="365" width="1020" height="120" rx="8" fill="#e8f5e9" stroke="#2e7d32" stroke-width="1.5"/>
+  <rect x="40" y="365" width="160" height="120" rx="8" fill="#2e7d32"/>
+  <text x="120" y="418" text-anchor="middle" class="layer-label">Service-Schicht</text>
+  <text x="120" y="438" text-anchor="middle" class="legend" fill="#fff">Geschäftslogik</text>
+
+  <rect x="225" y="382" width="255" height="86" rx="6" fill="#fff" stroke="#2e7d32"/>
+  <text x="352" y="402" text-anchor="middle" class="box-title">IngestionService</text>
+  <text x="352" y="421" text-anchor="middle" class="box-text">Scan → Hash → Load → Chunk →</text>
+  <text x="352" y="436" text-anchor="middle" class="box-text">Embed → Upsert (Qdrant)</text>
+  <text x="352" y="456" text-anchor="middle" class="box-meta">ingestion_service.py · 396 LOC</text>
+
+  <rect x="495" y="382" width="255" height="86" rx="6" fill="#fff" stroke="#2e7d32"/>
+  <text x="622" y="402" text-anchor="middle" class="box-title">RetrievalService</text>
+  <text x="622" y="421" text-anchor="middle" class="box-text">Frage-Embedding +</text>
+  <text x="622" y="436" text-anchor="middle" class="box-text">Vektor-Suche (Tenant-isoliert)</text>
+  <text x="622" y="456" text-anchor="middle" class="box-meta">retrieval_service.py · 44 LOC</text>
+
+  <rect x="765" y="382" width="270" height="86" rx="6" fill="#fff" stroke="#2e7d32"/>
+  <text x="900" y="402" text-anchor="middle" class="box-title">ChatService</text>
+  <text x="900" y="421" text-anchor="middle" class="box-text">Retrieval → Prompt → LLM →</text>
+  <text x="900" y="436" text-anchor="middle" class="box-text">Antwort + Quellen + Persistenz</text>
+  <text x="900" y="456" text-anchor="middle" class="box-meta">chat_service.py · 259 LOC</text>
+
+  <!-- ===================== ADAPTER / PARSER LAYER ===================== -->
+  <rect x="40" y="505" width="1020" height="80" rx="8" fill="#ede7f6" stroke="#5e35b1" stroke-width="1.5"/>
+  <rect x="40" y="505" width="160" height="80" rx="8" fill="#5e35b1"/>
+  <text x="120" y="548" text-anchor="middle" class="layer-label">Adapter / Parser</text>
+
+  <rect x="225" y="520" width="155" height="50" rx="5" fill="#fff" stroke="#5e35b1"/>
+  <text x="302" y="540" text-anchor="middle" class="box-title">DocumentLoader</text>
+  <text x="302" y="558" text-anchor="middle" class="box-text">PDF · DOCX · XLSX</text>
+
+  <rect x="390" y="520" width="155" height="50" rx="5" fill="#fff" stroke="#5e35b1"/>
+  <text x="467" y="540" text-anchor="middle" class="box-title">OfficeConverter</text>
+  <text x="467" y="558" text-anchor="middle" class="box-text">.doc/.xls (LibreOffice)</text>
+
+  <rect x="555" y="520" width="155" height="50" rx="5" fill="#fff" stroke="#5e35b1"/>
+  <text x="632" y="540" text-anchor="middle" class="box-title">Chunker</text>
+  <text x="632" y="558" text-anchor="middle" class="box-text">Text + Tabellen-Logik</text>
+
+  <rect x="720" y="520" width="155" height="50" rx="5" fill="#fff" stroke="#5e35b1"/>
+  <text x="797" y="540" text-anchor="middle" class="box-title">OllamaClient</text>
+  <text x="797" y="558" text-anchor="middle" class="box-text">Embed · Chat (HTTP)</text>
+
+  <rect x="885" y="520" width="150" height="50" rx="5" fill="#fff" stroke="#5e35b1"/>
+  <text x="960" y="540" text-anchor="middle" class="box-title">QdrantStore</text>
+  <text x="960" y="558" text-anchor="middle" class="box-text">Upsert · Search</text>
+
+  <!-- ===================== PERSISTENCE / EXTERN ===================== -->
+  <rect x="40" y="605" width="1020" height="135" rx="8" fill="#fce4ec" stroke="#ad1457" stroke-width="1.5"/>
+  <rect x="40" y="605" width="160" height="135" rx="8" fill="#ad1457"/>
+  <text x="120" y="665" text-anchor="middle" class="layer-label">Persistenz &amp; externe</text>
+  <text x="120" y="685" text-anchor="middle" class="layer-label">Dienste</text>
+
+  <!-- SQLite -->
+  <rect x="225" y="620" width="180" height="105" rx="6" fill="#fff" stroke="#ad1457"/>
+  <text x="315" y="640" text-anchor="middle" class="box-title">SQLite (WAL)</text>
+  <text x="315" y="657" text-anchor="middle" class="box-text">Metadaten &amp; Audit</text>
+  <text x="315" y="674" text-anchor="middle" class="box-text">file_sources · documents</text>
+  <text x="315" y="690" text-anchor="middle" class="box-text">ingestion_jobs</text>
+  <text x="315" y="706" text-anchor="middle" class="box-text">chat_sessions · chat_messages</text>
+  <text x="315" y="720" text-anchor="middle" class="box-meta">storage/rag.sqlite</text>
+
+  <!-- Qdrant -->
+  <rect x="415" y="620" width="180" height="105" rx="6" fill="#fff" stroke="#ad1457"/>
+  <text x="505" y="640" text-anchor="middle" class="box-title">Qdrant :6333</text>
+  <text x="505" y="657" text-anchor="middle" class="box-text">Vektor-Datenbank</text>
+  <text x="505" y="674" text-anchor="middle" class="box-text">Collection: documents</text>
+  <text x="505" y="690" text-anchor="middle" class="box-text">Distance: Cosine</text>
+  <text x="505" y="706" text-anchor="middle" class="box-text">Payload-Index: tenant, project</text>
+  <text x="505" y="720" text-anchor="middle" class="box-meta">~1024-dim (bge-m3)</text>
+
+  <!-- Ollama -->
+  <rect x="605" y="620" width="180" height="105" rx="6" fill="#fff" stroke="#ad1457"/>
+  <text x="695" y="640" text-anchor="middle" class="box-title">Ollama :11434</text>
+  <text x="695" y="657" text-anchor="middle" class="box-text">LLM-Runtime (lokal)</text>
+  <text x="695" y="674" text-anchor="middle" class="box-text">Embedding: bge-m3 /</text>
+  <text x="695" y="687" text-anchor="middle" class="box-text">mxbai-embed-large</text>
+  <text x="695" y="704" text-anchor="middle" class="box-text">Chat: qwen2.5:14b/32b</text>
+  <text x="695" y="720" text-anchor="middle" class="box-meta">100 % offline</text>
+
+  <!-- Filesystem -->
+  <rect x="795" y="620" width="240" height="105" rx="6" fill="#fff" stroke="#ad1457"/>
+  <text x="915" y="640" text-anchor="middle" class="box-title">Dokument-Ablage</text>
+  <text x="915" y="657" text-anchor="middle" class="box-text">Server-seitig gemountet</text>
+  <text x="915" y="674" text-anchor="middle" class="box-text">ALLOWED_BASE_PATHS</text>
+  <text x="915" y="690" text-anchor="middle" class="box-text">PDF · DOCX · DOC · XLSX · XLS</text>
+  <text x="915" y="706" text-anchor="middle" class="box-text">SHA-256 · mtime-Tracking</text>
+  <text x="915" y="720" text-anchor="middle" class="box-meta">Allow-list erzwingt Zugriff</text>
+
+  <!-- ===================== FLOW ARROWS ===================== -->
+  <!-- Client to API -->
+  <line x1="335" y1="140" x2="335" y2="180" stroke="#1f4e79" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+  <line x1="575" y1="140" x2="575" y2="180" stroke="#1f4e79" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+  <line x1="865" y1="140" x2="865" y2="180" stroke="#1f4e79" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+
+  <!-- API to Security Gate -->
+  <line x1="550" y1="285" x2="550" y2="305" stroke="#444" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- Security to Services -->
+  <line x1="352" y1="345" x2="352" y2="382" stroke="#2e7d32" stroke-width="1.5" marker-end="url(#arrowGreen)"/>
+  <line x1="622" y1="345" x2="622" y2="382" stroke="#2e7d32" stroke-width="1.5" marker-end="url(#arrowGreen)"/>
+  <line x1="900" y1="345" x2="900" y2="382" stroke="#2e7d32" stroke-width="1.5" marker-end="url(#arrowGreen)"/>
+
+  <!-- Services to Adapters -->
+  <line x1="352" y1="468" x2="302" y2="520" stroke="#5e35b1" stroke-width="1.2" marker-end="url(#arrow)"/>
+  <line x1="352" y1="468" x2="467" y2="520" stroke="#5e35b1" stroke-width="1.2" marker-end="url(#arrow)"/>
+  <line x1="352" y1="468" x2="632" y2="520" stroke="#5e35b1" stroke-width="1.2" marker-end="url(#arrow)"/>
+  <line x1="622" y1="468" x2="797" y2="520" stroke="#5e35b1" stroke-width="1.2" marker-end="url(#arrow)"/>
+  <line x1="900" y1="468" x2="797" y2="520" stroke="#5e35b1" stroke-width="1.2" marker-end="url(#arrow)"/>
+  <line x1="622" y1="468" x2="960" y2="520" stroke="#5e35b1" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- Adapters to Persistence -->
+  <line x1="797" y1="570" x2="695" y2="620" stroke="#ad1457" stroke-width="1.2" marker-end="url(#arrow)"/>
+  <line x1="960" y1="570" x2="505" y2="620" stroke="#ad1457" stroke-width="1.2" marker-end="url(#arrow)"/>
+  <line x1="302" y1="570" x2="915" y2="620" stroke="#ad1457" stroke-width="1.2" marker-end="url(#arrow)"/>
+  <line x1="467" y1="570" x2="915" y2="620" stroke="#ad1457" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+  <!-- Direct line: Services write to SQLite -->
+  <line x1="225" y1="430" x2="170" y2="430" stroke="#ad1457" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="170" y1="430" x2="170" y2="660" stroke="#ad1457" stroke-width="1" stroke-dasharray="3,3"/>
+  <line x1="170" y1="660" x2="225" y2="660" stroke="#ad1457" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow)"/>
+  <text x="146" y="555" text-anchor="middle" class="legend" fill="#ad1457" transform="rotate(-90 146 555)">SQLAlchemy</text>
+
+  <!-- Legend -->
+  <rect x="40" y="755" width="14" height="10" fill="#1f4e79"/>
+  <text x="60" y="765" class="legend">HTTP-Anfragen</text>
+  <rect x="170" y="755" width="14" height="10" fill="#2e7d32"/>
+  <text x="190" y="765" class="legend">Service-Aufrufe (nach Sicherheits-Gate)</text>
+  <rect x="450" y="755" width="14" height="10" fill="#5e35b1"/>
+  <text x="470" y="765" class="legend">Adapter-Aufrufe</text>
+  <rect x="600" y="755" width="14" height="10" fill="#ad1457"/>
+  <text x="620" y="765" class="legend">Persistenz / I/O</text>
+  <text x="1055" y="765" text-anchor="end" class="legend">© Reineke-Technik · alle Daten on-premise</text>
+</svg>

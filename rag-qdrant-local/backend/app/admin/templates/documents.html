@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Dokumente · Reineke-RAG Admin{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h3 m-0">Dokumente</h1>
+</div>
+
+<form class="card border-0 shadow-sm mb-3"
+      hx-get="/admin/api/documents"
+      hx-target="#documents-panel"
+      hx-swap="innerHTML"
+      hx-trigger="submit, change from:select, keyup changed delay:400ms from:input[name='q']">
+  <div class="card-body">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-secondary mb-1">Mandant</label>
+        <input class="form-control form-control-sm" name="tenant" placeholder="z. B. mk-lasertechnik">
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-secondary mb-1">Projekt</label>
+        <input class="form-control form-control-sm" name="project" placeholder="z. B. jonyx-analyse">
+      </div>
+      <div class="col-12 col-md-2">
+        <label class="form-label small text-secondary mb-1">Status</label>
+        <select class="form-select form-select-sm" name="status">
+          <option value="">Alle (außer gelöscht)</option>
+          <option value="indexed">indexed</option>
+          <option value="pending">pending</option>
+          <option value="failed">failed</option>
+          <option value="requires_ocr">requires_ocr</option>
+          <option value="deleted">deleted</option>
+        </select>
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-secondary mb-1">Suche im Dateinamen</label>
+        <input class="form-control form-control-sm" name="q" placeholder="…">
+      </div>
+      <div class="col-12 col-md-1">
+        <button type="submit" class="btn btn-sm btn-primary w-100">Suchen</button>
+      </div>
+    </div>
+  </div>
+</form>
+
+<div id="documents-panel"
+     hx-get="/admin/api/documents{% if request.query_params %}?{{ request.query_params }}{% endif %}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  <p class="text-secondary">Lade…</p>
+</div>
+{% endblock %}

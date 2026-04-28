@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Ingest-Verlauf · Reineke-RAG Admin{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h1 class="h3 m-0">Ingest-Verlauf</h1>
+  <button class="btn btn-sm btn-outline-secondary"
+          hx-get="/admin/api/jobs"
+          hx-include="#jobs-filter"
+          hx-target="#jobs-panel"
+          hx-swap="innerHTML">
+    Aktualisieren
+  </button>
+</div>
+
+<form id="jobs-filter" class="card border-0 shadow-sm mb-3"
+      hx-get="/admin/api/jobs"
+      hx-target="#jobs-panel"
+      hx-swap="innerHTML"
+      hx-trigger="change, keyup changed delay:400ms">
+  <div class="card-body">
+    <div class="row g-2">
+      <div class="col-12 col-md-4">
+        <label class="form-label small text-secondary mb-1">Mandant</label>
+        <input class="form-control form-control-sm" name="tenant"
+               value="{{ request.query_params.get('tenant', '') }}">
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label small text-secondary mb-1">Projekt</label>
+        <input class="form-control form-control-sm" name="project"
+               value="{{ request.query_params.get('project', '') }}">
+      </div>
+    </div>
+  </div>
+</form>
+
+<div id="jobs-panel"
+     hx-get="/admin/api/jobs{% if request.query_params %}?{{ request.query_params }}{% endif %}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  <p class="text-secondary">Lade…</p>
+</div>
+{% endblock %}
