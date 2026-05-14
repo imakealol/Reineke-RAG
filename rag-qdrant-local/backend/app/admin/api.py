@@ -346,6 +346,16 @@ async def ingest_run(
     recursive = form.get("recursive") == "on"
     reindex_changed_only = form.get("reindex_changed_only") == "on"
 
+    # The scan-result template renders one ``include_extensions=.pdf`` field
+    # per checked type, plus a hidden ``include_extensions_picker=1`` marker
+    # so we can tell "user unchecked everything" (whitelist=[]) apart from
+    # "no picker shown at all" (whitelist=None → legacy behaviour, ingest
+    # every supported type).
+    raw_includes = form.getlist("include_extensions")
+    include_extensions: Optional[List[str]] = None
+    if "include_extensions_picker" in form:
+        include_extensions = [e.strip().lower() for e in raw_includes if e.strip()]
+
     error: Optional[str] = None
     result = None
     try:
@@ -355,6 +365,7 @@ async def ingest_run(
             path=raw_path,
             recursive=recursive,
             reindex_changed_only=reindex_changed_only,
+            include_extensions=include_extensions,
         )
         svc = IngestionService()
         result = await svc.ingest_path(
@@ -364,6 +375,7 @@ async def ingest_run(
             path=req.path,
             recursive=req.recursive,
             reindex_changed_only=req.reindex_changed_only,
+            include_extensions=req.include_extensions,
         )
     except PathSecurityError as exc:
         error = str(exc)

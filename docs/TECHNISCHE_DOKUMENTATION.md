@@ -275,7 +275,7 @@ Default-Werte: `CHUNK_SIZE=1000`, `CHUNK_OVERLAP=150`, `XLSX_ROWS_PER_CHUNK=40`,
 | `_ensure_collection_for_model()` | async | Probt Embedding-Dimension, erstellt Collection |
 | `_upsert_file_source(db, *, tenant, project, base_path, recursive)` | sync | Legt/aktualisiert `FileSource`-Datensatz |
 | `_find_or_create_document(db, *, tenant, project, path, checksum)` | sync | (Document, is_new) |
-| `ingest_path(db, *, tenant, project, path, recursive=True, reindex_changed_only=True)` | async | **Komplette Pipeline** |
+| `ingest_path(db, *, tenant, project, path, recursive=True, reindex_changed_only=True, include_extensions=None)` | async | **Komplette Pipeline** (Whitelist über `include_extensions`, `None` = alle Typen) |
 | `reindex_changed(db, *, tenant, project, path, recursive=True, mark_missing_as_deleted=False)` | async | Differenz-Reindex |
 | `delete_document(db, document_id)` | async | Qdrant + SQLite löschen |
 

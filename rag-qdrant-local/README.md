@@ -144,9 +144,17 @@ curl -s -X POST http://localhost:8000/sources/ingest-path \
     "project": "jonyx-analyse",
     "path": "/mnt/rag-data/mk-lasertechnik/jonyx",
     "recursive": true,
-    "reindex_changed_only": true
+    "reindex_changed_only": true,
+    "include_extensions": [".pdf", ".docx"]
   }' | jq
 ```
+
+`include_extensions` (optional) ist eine Whitelist von Dateiendungen für
+diesen Aufruf. `null` oder weggelassen → alle unterstützten Typen werden
+indiziert (Default). Leeres Array → keine Datei wird indiziert. Bereits
+indizierte Dateien anderer Typen bleiben im Bestand. Der Ingest-Assistent im
+Admin-UI rendert nach dem Scan automatisch eine Checkbox pro gefundenem
+Dateityp und schickt das Ergebnis als `include_extensions`.
 
 ### `GET /documents?tenant=…&project=…`
 

@@ -59,6 +59,11 @@ class IngestPathRequest(TenantProject):
     path: str
     recursive: bool = True
     reindex_changed_only: bool = True
+    # If set, only files whose extension (lowercased, including the leading
+    # dot — e.g. ``".pdf"``) is in this list are ingested. ``None`` (default)
+    # means: ingest every supported file type. An empty list means: ingest
+    # nothing — useful to dry-run the wizard without writing.
+    include_extensions: Optional[List[str]] = None
 
 
 class IngestError(BaseModel):
