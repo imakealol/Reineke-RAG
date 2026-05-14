@@ -5,7 +5,7 @@ Basis von **FastAPI**, **Ollama** und **Qdrant**. Dokumente werden direkt
 aus serverseitig gemounteten Verzeichnissen indexiert — Upload ist möglich,
 aber nicht der primäre Weg.
 
-Unterstützte Dateitypen: `.pdf`, `.docx`, `.doc`, `.xlsx`, `.xls`.
+Unterstützte Dateitypen: `.pdf`, `.docx`, `.doc`, `.xlsx`, `.xls`, `.html`, `.htm`.
 
 ---
 

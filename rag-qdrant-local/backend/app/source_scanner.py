@@ -9,7 +9,7 @@ from typing import Dict, Iterable, List, Tuple
 from .schemas import FileEntry
 from .utils import file_modified_iso
 
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".xlsx", ".xls"}
+SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".html", ".htm"}
 
 # Filenames / dirs to never traverse — backups, lock files, OS junk.
 _IGNORED_DIR_NAMES = {".git", "__pycache__", ".DS_Store", "node_modules", ".idea"}
