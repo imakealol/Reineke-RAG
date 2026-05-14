@@ -59,9 +59,11 @@ Vollständige Anleitung inkl. Modell-Pulls, Smoke-Test und OpenWebUI-Anbindung:
 
 ## Unterstützte Dateitypen
 
-`.pdf`, `.docx`, `.doc`, `.xlsx`, `.xls` — Legacy-Formate (`.doc`, `.xls`)
-werden über `soffice` (LibreOffice) konvertiert; alle übrigen Formate laufen
-nativ.
+`.pdf`, `.docx`, `.doc`, `.xlsx`, `.xls`, `.html`, `.htm` — Legacy-Formate
+(`.doc`, `.xls`) werden über `soffice` (LibreOffice) konvertiert; alle übrigen
+Formate laufen nativ. HTML wird mit BeautifulSoup geparst: Skripte, Styles,
+Navigation und Footer werden entfernt, Tabellen werden als Markdown
+extrahiert.
 
 ## Tests
 

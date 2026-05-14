@@ -34,7 +34,7 @@ class LoadedSegment:
     """One coherent piece of text from a source document."""
 
     text: str
-    document_type: str  # "pdf" | "docx" | "xlsx"
+    document_type: str  # "pdf" | "docx" | "xlsx" | "html"
     page: Optional[int] = None
     sheet: Optional[str] = None
     row_start: Optional[int] = None
@@ -258,6 +258,147 @@ def _format_table(rows: List[List[str]]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# HTML
+# ---------------------------------------------------------------------------
+
+# Tags whose contents are pure chrome / non-content — stripped before extraction
+# so they never appear in the retrieval index.
+_HTML_NOISE_TAGS = ("script", "style", "noscript", "nav", "header", "footer", "aside")
+
+
+def _html_table_to_markdown(table) -> str:
+    """Convert a BeautifulSoup <table> tag to a markdown table.
+
+    Mirrors :func:`_table_to_markdown` for DOCX so retrieval sees a consistent
+    representation regardless of source format.
+    """
+    rows: List[List[str]] = []
+    for tr in table.find_all("tr"):
+        cells: List[str] = []
+        for cell in tr.find_all(["th", "td"]):
+            text = cell.get_text(separator=" ", strip=True).replace("|", "\\|")
+            cells.append(text)
+        if cells:
+            rows.append(cells)
+
+    if not rows:
+        return ""
+
+    width = max(len(r) for r in rows)
+    rows = [r + [""] * (width - len(r)) for r in rows]
+
+    header = rows[0]
+    body = rows[1:] if len(rows) > 1 else []
+
+    lines = ["| " + " | ".join(header) + " |"]
+    lines.append("| " + " | ".join(["---"] * width) + " |")
+    for r in body:
+        lines.append("| " + " | ".join(r) + " |")
+    return "\n".join(lines)
+
+
+def _load_html(path: Path) -> List[LoadedSegment]:
+    """Extract clean text from an HTML document.
+
+    Strategy:
+      1. Read bytes; let BeautifulSoup auto-detect the encoding (handles UTF-8
+         with/without BOM, ISO-8859-1, Windows-1252 — common for legacy German
+         pages).
+      2. Strip noise tags (``script``, ``style``, ``nav``, ``header``,
+         ``footer``, ``aside``, ``noscript``).
+      3. Narrow to the main content region: ``<main>`` → ``<article>`` →
+         ``<body>`` → whole document.
+      4. Pull tables out separately and render them as markdown so retrieval
+         keeps row/column structure (same shape as DOCX tables).
+      5. Collect headings, paragraphs, list items, blockquotes and ``<pre>``
+         blocks into one prose segment.
+    """
+    from bs4 import BeautifulSoup
+
+    try:
+        with open(path, "rb") as f:
+            raw = f.read()
+    except Exception as exc:
+        raise DocumentLoadError(f"Could not open HTML: {exc}") from exc
+
+    if not raw.strip():
+        raise DocumentLoadError(f"HTML '{path.name}' is empty.")
+
+    try:
+        soup = BeautifulSoup(raw, "html.parser")
+    except Exception as exc:  # pragma: no cover — html.parser is very lenient
+        raise DocumentLoadError(f"Could not parse HTML: {exc}") from exc
+
+    for tag in soup(list(_HTML_NOISE_TAGS)):
+        tag.decompose()
+
+    title = ""
+    if soup.title and soup.title.string:
+        title = soup.title.string.strip()
+
+    root = soup.find("main") or soup.find("article") or soup.body or soup
+
+    segments: List[LoadedSegment] = []
+
+    # Pull tables out first and remove them, so prose extraction below does
+    # not duplicate their content as flattened text.
+    table_payloads: List[tuple[int, str]] = []
+    for table_idx, table in enumerate(root.find_all("table"), start=1):
+        md = _html_table_to_markdown(table)
+        if md:
+            table_payloads.append((table_idx, md))
+        table.decompose()
+
+    parts: List[str] = []
+    has_real_content = False
+
+    structured_elements = root.find_all(
+        ["h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "blockquote", "pre"]
+    )
+    for el in structured_elements:
+        text = el.get_text(separator=" ", strip=True)
+        if text:
+            parts.append(text)
+            has_real_content = True
+
+    # Fallback: documents without structured tags (e.g. one big <div>) still
+    # need to be ingestible — only if there is meaningful body text after the
+    # noise tags were stripped.
+    if not has_real_content and not table_payloads:
+        plain = root.get_text(separator="\n", strip=True)
+        if plain:
+            parts.append(plain)
+            has_real_content = True
+
+    # Title is metadata, not content — only include it when the page has
+    # real body content (or a table). Title-only pages are treated as empty.
+    if title and (has_real_content or table_payloads):
+        parts.insert(0, title)
+
+    if parts:
+        segments.append(
+            LoadedSegment(
+                text="\n\n".join(parts),
+                document_type="html",
+                extras={"title": title} if title else {},
+            )
+        )
+
+    for idx, md in table_payloads:
+        segments.append(
+            LoadedSegment(
+                text=f"[Table {idx}]\n{md}",
+                document_type="html",
+                extras={"table_index": idx},
+            )
+        )
+
+    if not segments:
+        raise DocumentLoadError(f"HTML '{path.name}' produced no extractable text.")
+    return segments
+
+
+# ---------------------------------------------------------------------------
 # Public dispatch
 # ---------------------------------------------------------------------------
 
@@ -267,6 +408,8 @@ _DISPATCH = {
     ".doc": (_load_doc_legacy, "docx"),
     ".xlsx": (_load_xlsx, "xlsx"),
     ".xls": (_load_xls_legacy, "xlsx"),
+    ".html": (_load_html, "html"),
+    ".htm": (_load_html, "html"),
 }
 
 

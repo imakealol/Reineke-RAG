@@ -17,7 +17,7 @@ auch Legacy-Formate `.doc` und `.xls`). Die aktuelle Code­basis liegt unter
 | Einsatzart | Server-seitig, vollständig on-premise |
 | Internet-Zugriff | nicht erforderlich |
 | Quell-Dokumente | Datei­system (kein Upload-Workflow) |
-| Unterstützte Formate | PDF, DOCX, DOC, XLSX, XLS |
+| Unterstützte Formate | PDF, DOCX, DOC, XLSX, XLS, HTML, HTM |
 | Mandanten­fähig | ja (Tenant + Project) |
 | Halluzinations­schutz | ja, durch Score-Schwelle und Quellen­zwang |
 | LLM-Laufzeit | Ollama (Apple-Silicon-tauglich) |
@@ -189,7 +189,7 @@ System-Deny-Liste (Default): `/etc`, `/root`, `/home`, `/var`, `/proc`, `/sys`, 
 
 | Symbol | Signatur | Zweck |
 |---|---|---|
-| `SUPPORTED_EXTENSIONS` | Konstante | `{.pdf, .docx, .doc, .xlsx, .xls}` |
+| `SUPPORTED_EXTENSIONS` | Konstante | `{.pdf, .docx, .doc, .xlsx, .xls, .html, .htm}` |
 | `_IGNORED_DIR_NAMES` | Konstante | `.git`, `__pycache__`, `node_modules`, … |
 | `ScanResult` | Dataclass | Felder: `supported`, `unsupported`, `file_types` |
 | `_iter_files(root, recursive)` | Iterator | Datei-Iteration mit Ignore-Liste |
@@ -209,6 +209,8 @@ System-Deny-Liste (Default): `/etc`, `/root`, `/home`, `/var`, `/proc`, `/sys`, 
 | `_table_to_markdown(table)` | `(table) -> str` | Word-Tabelle als Markdown |
 | `_load_docx(path)` | `(Path) -> List[LoadedSegment]` | Paragraphen + Tabellen |
 | `_load_xlsx(path)` | `(Path) -> List[LoadedSegment]` | Sheet-Erkennung, Header-Heuristik |
+| `_html_table_to_markdown(table)` | `(bs4 Tag) -> str` | HTML-Tabelle als Markdown |
+| `_load_html(path)` | `(Path) -> List[LoadedSegment]` | BeautifulSoup-Parsing, Noise-Filter, Tabellen-Extraktion |
 | `load_document(path)` | `(Path) -> LoadedDocument` | **Dispatcher** für alle Formate |
 
 ## 4.9 `office_converter.py` — Legacy-Office-Konvertierung

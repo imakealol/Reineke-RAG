@@ -13,13 +13,17 @@ def test_scan_classifies_extensions(sandbox_root: Path):
     (proj / "c.xlsx").write_bytes(b"PK\x03\x04fake")
     (proj / "d.txt").write_text("not supported")
     (proj / "e.png").write_bytes(b"\x89PNGfake")
+    (proj / "f.html").write_text("<html><body>x</body></html>")
+    (proj / "g.htm").write_text("<html><body>y</body></html>")
 
     result = scan_directory(proj, recursive=True)
 
     exts = {f.extension for f in result.supported}
-    assert exts == {".pdf", ".docx", ".xlsx"}
+    assert exts == {".pdf", ".docx", ".xlsx", ".html", ".htm"}
     assert {f.extension for f in result.unsupported} == {".txt", ".png"}
-    assert result.file_types == {".pdf": 1, ".docx": 1, ".xlsx": 1}
+    assert result.file_types == {
+        ".pdf": 1, ".docx": 1, ".xlsx": 1, ".html": 1, ".htm": 1,
+    }
 
 
 def test_scan_non_recursive(sandbox_root: Path):
