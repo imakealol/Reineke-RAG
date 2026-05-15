@@ -135,7 +135,7 @@ Tabellen listen sämtliche öffentlichen Funktionen, Klassen und Methoden auf
 |---|---|---|
 | `FileSource` | `file_sources` | id · tenant · project · base_path · recursive · created_at · last_scan_at · last_ingest_at |
 | `Document` | `documents` | id · tenant · project · source_path · file_name · file_extension · file_size · checksum · modified_at · status · chunks_count · error_message · created_at · updated_at |
-| `IngestionJob` | `ingestion_jobs` | id · tenant · project · source_path · status · files_found · files_indexed · files_skipped · files_failed · chunks_created · error_message · created_at · completed_at |
+| `IngestionJob` | `ingestion_jobs` | id · tenant · project · source_path · status · files_found · files_indexed · files_skipped · files_failed · chunks_created · current_file · error_message · created_at · completed_at |
 | `ChatSession` | `chat_sessions` | id · tenant · project · created_at · messages (1:n) |
 | `ChatMessage` | `chat_messages` | id · session_id · role · content · sources_json · created_at |
 

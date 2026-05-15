@@ -86,6 +86,10 @@ class IngestionJob(Base):
     files_skipped: Mapped[int] = mapped_column(Integer, default=0)
     files_failed: Mapped[int] = mapped_column(Integer, default=0)
     chunks_created: Mapped[int] = mapped_column(Integer, default=0)
+    # File currently being processed — populated inside the ingest loop so the
+    # admin-UI progress bar can show "Indexiere: foo.pdf" while the run is
+    # still active. Cleared back to NULL when the job reaches a terminal state.
+    current_file: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

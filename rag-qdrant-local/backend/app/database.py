@@ -66,6 +66,8 @@ def _apply_column_migrations() -> None:
     """
     additions = [
         ("tenant_project_prompts", "chat_model", "VARCHAR(128)"),
+        # Live progress display — added in the ingest-progress-bar feature.
+        ("ingestion_jobs", "current_file", "TEXT"),
     ]
     with engine.begin() as conn:
         for table, column, col_type in additions:

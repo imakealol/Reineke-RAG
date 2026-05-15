@@ -1,0 +1,105 @@
+{# Live ingest progress — polled every 2s while the job is running.
+
+   Re-rendered fully from the server: the same fragment serves both the
+   initial POST response from /admin/api/ingest/run and the subsequent
+   htmx polls of /admin/api/jobs/{id}/progress, so there is exactly one
+   place that knows what the panel looks like.
+#}
+{% set is_running = not progress.is_terminal %}
+{% set bar_class = 'progress-bar-striped progress-bar-animated' if is_running else '' %}
+{% if job.status == 'failed' %}
+  {% set bar_color = 'bg-danger' %}
+{% elif job.files_failed and job.files_failed > 0 %}
+  {% set bar_color = 'bg-warning' %}
+{% elif progress.is_terminal %}
+  {% set bar_color = 'bg-success' %}
+{% else %}
+  {% set bar_color = '' %}
+{% endif %}
+
+<div id="ingest-progress"
+     class="card border-0"
+     {% if is_running %}
+     hx-get="/admin/api/jobs/{{ job.id }}/progress"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     {% endif %}>
+  <div class="card-body p-3">
+
+    <div class="d-flex justify-content-between align-items-baseline mb-2">
+      <div>
+        <strong>Ingest läuft</strong>
+        {% if progress.is_terminal %}
+          {% if job.status == 'failed' %}
+            <span class="badge text-bg-danger ms-2">Abgebrochen</span>
+          {% elif job.files_failed and job.files_failed > 0 %}
+            <span class="badge text-bg-warning ms-2">Mit Fehlern fertig</span>
+          {% else %}
+            <span class="badge text-bg-success ms-2">Fertig</span>
+          {% endif %}
+        {% else %}
+          <span class="badge text-bg-primary ms-2">in Arbeit</span>
+        {% endif %}
+      </div>
+      <div class="small text-secondary">
+        <span title="Vergangene Zeit">⏱ {{ progress.elapsed_human }}</span>
+        {% if progress.eta_human %}
+          <span class="ms-2" title="Geschätzte Restzeit">↦ ETA {{ progress.eta_human }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="progress" role="progressbar"
+         aria-valuenow="{{ progress.percent }}" aria-valuemin="0" aria-valuemax="100"
+         style="height: 1.25rem;">
+      <div class="progress-bar {{ bar_class }} {{ bar_color }}"
+           style="width: {{ progress.percent }}%;">
+        {% if progress.total > 0 %}
+          {{ progress.done }} / {{ progress.total }} ({{ progress.percent }} %)
+        {% else %}
+          …
+        {% endif %}
+      </div>
+    </div>
+
+    {% if is_running and job.current_file %}
+    <div class="small text-secondary mt-2 text-truncate" title="{{ job.current_file }}">
+      Indexiere: <code>{{ job.current_file }}</code>
+    </div>
+    {% endif %}
+
+    <div class="d-flex gap-3 flex-wrap mt-3 small">
+      <span class="badge bg-success-subtle text-success border" title="Erfolgreich eingelesen">
+        ✓ {{ job.files_indexed or 0 }} indiziert
+      </span>
+      <span class="badge bg-secondary-subtle text-secondary border" title="Unverändert, übersprungen">
+        ⊝ {{ job.files_skipped or 0 }} übersprungen
+      </span>
+      <span class="badge bg-danger-subtle text-danger border" title="Fehler beim Einlesen">
+        ✗ {{ job.files_failed or 0 }} fehlgeschlagen
+      </span>
+      <span class="badge bg-info-subtle text-info border" title="Erzeugte Vektor-Chunks">
+        ⊞ {{ job.chunks_created or 0 }} Chunks
+      </span>
+    </div>
+
+    {% if progress.is_terminal and job.error_message %}
+    <div class="alert alert-danger small mt-3 mb-0">
+      <strong>Fehler:</strong> {{ job.error_message }}
+    </div>
+    {% endif %}
+
+    {% if progress.is_terminal %}
+    <div class="d-flex justify-content-end gap-2 mt-3">
+      <a class="btn btn-sm btn-outline-secondary"
+         href="/admin/dokumente?tenant={{ job.tenant }}&project={{ job.project }}">
+        Dokumente ansehen
+      </a>
+      <button type="button" class="btn btn-sm btn-outline-primary"
+              onclick="window.location.reload()">
+        Neuen Ingest starten
+      </button>
+    </div>
+    {% endif %}
+  </div>
+</div>
