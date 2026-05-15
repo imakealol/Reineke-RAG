@@ -1,0 +1,56 @@
+name: tests
+
+# Runs the backend pytest suite on every pull request and every push to main.
+# This produces the green/red check that appears on every PR — wire up
+# branch protection on `main` to require this check passing before merge.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancel earlier runs on the same PR when a new commit is pushed — saves
+# CI minutes and surfaces the latest state faster.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      # Test both versions named in our "Python 3.11+" support statement.
+      # If one fails we still want the other's signal, not an early abort.
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    defaults:
+      run:
+        working-directory: rag-qdrant-local/backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          # Cache wheels keyed on requirements.txt so reruns are fast.
+          cache: pip
+          cache-dependency-path: rag-qdrant-local/backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run pytest
+        # -ra prints reasons for skips/xfails next to failures.
+        # The suite is fully offline (no Qdrant/Ollama needed) so we can
+        # run it as-is on GitHub-hosted runners.
+        run: pytest -ra

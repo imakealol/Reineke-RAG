@@ -1,5 +1,7 @@
 # Reineke-RAG
 
+[![tests](https://github.com/rewerner42/Reineke-RAG/actions/workflows/tests.yml/badge.svg)](https://github.com/rewerner42/Reineke-RAG/actions/workflows/tests.yml)
+
 Lokales, vollständig **offline lauffähiges RAG-System** (Retrieval-Augmented
 Generation) für Word-, PDF- und Excel-Dokumente. Entwickelt für die interne
 Nutzung bei Reineke-Technik — keine Cloud, keine externen API-Aufrufe, alle
