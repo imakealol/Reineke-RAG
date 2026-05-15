@@ -9,8 +9,12 @@ __pycache__/
 venv/
 storage/converted/*
 storage/temp/*
+storage/job-logs/*
+storage/logs/*
 storage/rag.sqlite
 storage/rag.sqlite-*
 !storage/converted/.gitkeep
 !storage/temp/.gitkeep
+!storage/job-logs/.gitkeep
+!storage/logs/.gitkeep
 .DS_Store

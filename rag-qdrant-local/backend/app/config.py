@@ -150,6 +150,18 @@ class Settings(BaseSettings):
         p.mkdir(parents=True, exist_ok=True)
         return p
 
+    @property
+    def job_logs_dir(self) -> Path:
+        """One file per ingest job, named ``<job_id>.log``.
+
+        Used by the per-job logging capture so the admin UI can show the log
+        tail next to the live progress bar and offer the full file as a
+        download. Survives backend restarts (plain filesystem).
+        """
+        p = _project_root() / "storage" / "job-logs"
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

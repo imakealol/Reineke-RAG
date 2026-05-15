@@ -29,6 +29,7 @@ from .qdrant_store import QdrantStore
 from .schemas import IngestError, IngestPathResponse
 from .source_scanner import scan_directory
 from .utils import (
+    capture_logs_for_job,
     file_modified_iso,
     get_logger,
     new_id,

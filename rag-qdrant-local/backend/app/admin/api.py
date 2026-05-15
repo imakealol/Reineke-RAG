@@ -52,7 +52,7 @@ from ..settings_overrides import (
     set_override,
 )
 from ..source_scanner import scan_directory
-from ..utils import get_logger, new_id
+from ..utils import capture_logs_for_job, get_logger, job_log_path, new_id
 from .log_stream import app_log_stream, request_log_stream
 
 
@@ -351,19 +351,30 @@ async def _run_ingest_in_background(
     """
     bg_db: Session = SessionLocal()
     try:
-        svc = IngestionService()
-        await svc.ingest_path(
-            bg_db,
-            tenant=tenant,
-            project=project,
-            path=path,
-            recursive=recursive,
-            reindex_changed_only=reindex_changed_only,
-            include_extensions=include_extensions,
-            job_id=job_id,
-        )
+        # Capture every log record emitted during this ingest into the per-job
+        # file under storage/job-logs/<job_id>.log. The view/download endpoints
+        # serve that file. Wrapping the whole body means an early Ollama or
+        # Qdrant connectivity error also shows up there.
+        with capture_logs_for_job(job_id):
+            try:
+                svc = IngestionService()
+                await svc.ingest_path(
+                    bg_db,
+                    tenant=tenant,
+                    project=project,
+                    path=path,
+                    recursive=recursive,
+                    reindex_changed_only=reindex_changed_only,
+                    include_extensions=include_extensions,
+                    job_id=job_id,
+                )
+            except Exception:
+                # Log the traceback *inside* the capture so the per-job file
+                # contains it; then re-raise to the outer handler that marks
+                # the row as failed.
+                log.exception("Background ingest failed")
+                raise
     except Exception as exc:
-        log.exception("Background ingest failed: %s", exc)
         bg_db.rollback()
         # Best-effort: update the job row so the UI can show the failure
         # instead of a perpetually-spinning progress bar.
@@ -474,6 +485,28 @@ async def ingest_run(
     )
 
 
+_JOB_LOG_TAIL_LINES = 15
+_JOB_LOG_MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024  # 10 MiB — generous, but capped
+
+
+def _tail_job_log(job_id: str, *, lines: int = _JOB_LOG_TAIL_LINES) -> str:
+    """Return the last ``lines`` lines of a job's log file, or '' if absent.
+
+    Reads the whole file — fine because the per-job log is small (each
+    ingest is bounded to a few thousand lines max). Avoids the complication
+    of streaming a partial read.
+    """
+    path = job_log_path(job_id)
+    if not path.exists():
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    rows = text.splitlines()
+    return "\n".join(rows[-lines:])
+
+
 def _build_job_progress(job: IngestionJob) -> Dict[str, Any]:
     """Compute the values the live progress template needs.
 
@@ -509,6 +542,8 @@ def _build_job_progress(job: IngestionJob) -> Dict[str, Any]:
         "elapsed_human": _format_duration(elapsed_seconds),
         "eta_human": _format_duration(eta_seconds) if eta_seconds is not None else None,
         "is_terminal": is_terminal,
+        "log_tail": _tail_job_log(job.id),
+        "log_available": job_log_path(job.id).exists(),
     }
 
 
@@ -554,6 +589,80 @@ async def job_progress(
             "job": job,
             "progress": _build_job_progress(job),
         },
+    )
+
+
+def _verify_job_log_path(job_id: str, db: Session) -> Path:
+    """Look up the job and resolve its log file path, or raise 404.
+
+    Centralised so both the view and the download endpoint share the same
+    not-found / not-yet-logged handling and there is one place that decides
+    "this job is allowed to expose its log file".
+    """
+    job = db.execute(
+        select(IngestionJob).where(IngestionJob.id == job_id)
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job nicht gefunden.")
+
+    path = job_log_path(job_id)
+    if not path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Für diesen Job wurden noch keine Logs geschrieben.",
+        )
+    return path
+
+
+@router.get("/jobs/{job_id}/logs", response_class=Response)
+async def job_logs_view(
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Return the full per-job log file as ``text/plain`` for inline viewing.
+
+    Browsers render this directly in a new tab. Capped at a generous max
+    size so a runaway log cannot exhaust memory.
+    """
+    path = _verify_job_log_path(job_id, db)
+    try:
+        size = path.stat().st_size
+        if size > _JOB_LOG_MAX_DOWNLOAD_BYTES:
+            with path.open("rb") as f:
+                f.seek(-_JOB_LOG_MAX_DOWNLOAD_BYTES, 2)
+                data = f.read()
+            notice = (
+                f"... (log truncated, only the most recent "
+                f"{_JOB_LOG_MAX_DOWNLOAD_BYTES // 1024} KiB shown — use the "
+                f"download endpoint and copy from disk for the rest) ...\n"
+            )
+            data = notice.encode("utf-8") + data
+        else:
+            data = path.read_bytes()
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+    return Response(content=data, media_type="text/plain; charset=utf-8")
+
+
+@router.get("/jobs/{job_id}/logs.txt", response_class=Response)
+async def job_logs_download(
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Same content as the view endpoint but offered as an attachment so the
+    browser pops a Save-As dialog."""
+    path = _verify_job_log_path(job_id, db)
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+    filename = f"reineke-rag-ingest-{job_id}.log"
+    return Response(
+        content=data,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
