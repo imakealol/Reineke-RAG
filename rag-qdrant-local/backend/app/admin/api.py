@@ -28,7 +28,7 @@ from ..system_prompt_store import (
     set_system_prompt,
 )
 from ..config import settings
-from ..database import get_db
+from ..database import SessionLocal, get_db
 from ..ingestion_service import IngestionService
 from ..models import Document, IngestionJob, IngestSchedule, RequestLog, TenantProjectPrompt
 from ..ollama_client import OllamaClient
@@ -334,6 +334,56 @@ async def ingest_scan(
     )
 
 
+async def _run_ingest_in_background(
+    *,
+    job_id: str,
+    tenant: str,
+    project: str,
+    path: str,
+    recursive: bool,
+    reindex_changed_only: bool,
+    include_extensions: Optional[List[str]],
+) -> None:
+    """Run the ingest with its own DB session so the HTTP request that kicked
+    it off can return immediately. Any uncaught exception lands here and is
+    written back to the job row as a terminal-state error — otherwise the
+    progress polling would never know the run died.
+    """
+    bg_db: Session = SessionLocal()
+    try:
+        svc = IngestionService()
+        await svc.ingest_path(
+            bg_db,
+            tenant=tenant,
+            project=project,
+            path=path,
+            recursive=recursive,
+            reindex_changed_only=reindex_changed_only,
+            include_extensions=include_extensions,
+            job_id=job_id,
+        )
+    except Exception as exc:
+        log.exception("Background ingest failed: %s", exc)
+        bg_db.rollback()
+        # Best-effort: update the job row so the UI can show the failure
+        # instead of a perpetually-spinning progress bar.
+        try:
+            job = bg_db.execute(
+                select(IngestionJob).where(IngestionJob.id == job_id)
+            ).scalar_one_or_none()
+            if job is not None:
+                job.status = "failed"
+                job.error_message = str(exc)
+                job.current_file = None
+                job.completed_at = datetime.now(timezone.utc)
+                bg_db.commit()
+        except Exception:  # pragma: no cover — defensive against DB outages
+            log.exception("Failed to mark job %s as failed", job_id)
+            bg_db.rollback()
+    finally:
+        bg_db.close()
+
+
 @router.post("/ingest/run", response_class=HTMLResponse)
 async def ingest_run(
     request: Request,
@@ -356,8 +406,10 @@ async def ingest_run(
     if "include_extensions_picker" in form:
         include_extensions = [e.strip().lower() for e in raw_includes if e.strip()]
 
+    # --- 1) Path validation up-front so we can reject before spinning up a
+    #        background task and a job row.
     error: Optional[str] = None
-    result = None
+    safe_path_str = ""
     try:
         req = IngestPathRequest(
             tenant=tenant,
@@ -367,25 +419,141 @@ async def ingest_run(
             reindex_changed_only=reindex_changed_only,
             include_extensions=include_extensions,
         )
-        svc = IngestionService()
-        result = await svc.ingest_path(
-            db,
+        safe = resolve_safe_path(req.path)
+        assert_existing_dir(safe)
+        safe_path_str = str(safe)
+    except PathSecurityError as exc:
+        error = str(exc)
+    except Exception as exc:
+        log.exception("Ingest validation failed")
+        error = f"Fehler beim Ingest: {exc}"
+
+    if error:
+        return templates.TemplateResponse(
+            "partials/ingest_result.html",
+            {"request": request, "error": error, "result": None},
+        )
+
+    # --- 2) Pre-create the job row so we have an id to hand to the live
+    #        progress template (htmx will start polling it immediately).
+    job = IngestionJob(
+        id=new_id(),
+        tenant=req.tenant,
+        project=req.project,
+        source_path=safe_path_str,
+        status="running",
+    )
+    db.add(job)
+    db.commit()
+
+    # --- 3) Kick off the actual work in the background. asyncio.create_task
+    #        runs concurrently with the response below — the task survives
+    #        this request as long as the FastAPI process keeps running.
+    asyncio.create_task(
+        _run_ingest_in_background(
+            job_id=job.id,
             tenant=req.tenant,
             project=req.project,
-            path=req.path,
+            path=safe_path_str,
             recursive=req.recursive,
             reindex_changed_only=req.reindex_changed_only,
             include_extensions=req.include_extensions,
         )
-    except PathSecurityError as exc:
-        error = str(exc)
-    except Exception as exc:
-        log.exception("Ingest failed")
-        error = f"Fehler beim Ingest: {exc}"
+    )
+
+    # --- 4) Return the progress fragment. It contains an htmx-polling div
+    #        that fetches /admin/api/jobs/{id}/progress every 2 seconds until
+    #        the job reaches a terminal state.
+    return templates.TemplateResponse(
+        "partials/ingest_progress.html",
+        {
+            "request": request,
+            "job": job,
+            "progress": _build_job_progress(job),
+        },
+    )
+
+
+def _build_job_progress(job: IngestionJob) -> Dict[str, Any]:
+    """Compute the values the live progress template needs.
+
+    Pure function over the job row — kept separate so we can unit-test the
+    arithmetic (percent + ETA) without dragging in template rendering or a
+    full request stack.
+    """
+    total = job.files_found or 0
+    done = (job.files_indexed or 0) + (job.files_skipped or 0) + (job.files_failed or 0)
+    percent = 0
+    if total > 0:
+        percent = min(100, int(round(done * 100 / total)))
+
+    elapsed_seconds = 0.0
+    if job.created_at:
+        started = job.created_at
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        elapsed_seconds = (datetime.now(timezone.utc) - started).total_seconds()
+        elapsed_seconds = max(0.0, elapsed_seconds)
+
+    eta_seconds: Optional[float] = None
+    is_terminal = job.status not in ("running", "pending")
+    if not is_terminal and done > 0 and total > done and elapsed_seconds > 0.5:
+        rate = done / elapsed_seconds  # files per second
+        if rate > 0:
+            eta_seconds = (total - done) / rate
+
+    return {
+        "total": total,
+        "done": done,
+        "percent": percent,
+        "elapsed_human": _format_duration(elapsed_seconds),
+        "eta_human": _format_duration(eta_seconds) if eta_seconds is not None else None,
+        "is_terminal": is_terminal,
+    }
+
+
+def _format_duration(seconds: Optional[float]) -> str:
+    """Render a duration as ``Hh Mm`` / ``Mm Ss`` / ``Ss``, never zero-padded."""
+    if seconds is None:
+        return "—"
+    s = int(round(seconds))
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m {s % 60}s"
+    hours = s // 3600
+    minutes = (s % 3600) // 60
+    return f"{hours}h {minutes}m"
+
+
+@router.get("/jobs/{job_id}/progress", response_class=HTMLResponse)
+async def job_progress(
+    request: Request,
+    job_id: str,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """HTMX-polled fragment that renders the current state of an ingest job.
+
+    While ``job.status == "running"`` the response keeps the polling trigger.
+    Once the job reaches a terminal state, the response omits the trigger so
+    htmx stops polling and the user sees the final counters."""
+    job = db.execute(
+        select(IngestionJob).where(IngestionJob.id == job_id)
+    ).scalar_one_or_none()
+
+    if job is None:
+        return HTMLResponse(
+            content='<div class="alert alert-warning">Job nicht gefunden.</div>',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
 
     return templates.TemplateResponse(
-        "partials/ingest_result.html",
-        {"request": request, "error": error, "result": result},
+        "partials/ingest_progress.html",
+        {
+            "request": request,
+            "job": job,
+            "progress": _build_job_progress(job),
+        },
     )
 
 

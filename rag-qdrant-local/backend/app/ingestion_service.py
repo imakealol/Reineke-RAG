@@ -127,6 +127,26 @@ class IngestionService:
 
     # -----------------------------------------------------------------------
 
+    @staticmethod
+    def _update_job_progress(
+        db: Session,
+        job: IngestionJob,
+        *,
+        indexed: int,
+        skipped: int,
+        failed: int,
+        chunks_total: int,
+    ) -> None:
+        """Commit running counters to the job row so the live progress bar
+        sees them while the ingest is still in flight. Called once per file."""
+        job.files_indexed = indexed
+        job.files_skipped = skipped
+        job.files_failed = failed
+        job.chunks_created = chunks_total
+        db.commit()
+
+    # -----------------------------------------------------------------------
+
     async def ingest_path(
         self,
         db: Session,
@@ -137,7 +157,16 @@ class IngestionService:
         recursive: bool = True,
         reindex_changed_only: bool = True,
         include_extensions: Optional[List[str]] = None,
+        job_id: Optional[str] = None,
     ) -> IngestPathResponse:
+        """Run the full ingest pipeline.
+
+        When called via the admin wizard, the endpoint pre-creates the
+        :class:`IngestionJob` row so it can return a job id immediately for
+        the live progress bar; in that case ``job_id`` is passed in. When
+        called via the public ``/sources/ingest-path`` API, ``job_id`` is
+        ``None`` and we create a fresh job here ourselves.
+        """
         # --- security ------------------------------------------------------
         try:
             safe = resolve_safe_path(path)
@@ -149,14 +178,19 @@ class IngestionService:
         await self._ensure_collection_for_model()
 
         # --- track job -----------------------------------------------------
-        job = IngestionJob(
-            id=new_id(),
-            tenant=tenant,
-            project=project,
-            source_path=str(safe),
-            status="running",
-        )
-        db.add(job)
+        if job_id is not None:
+            job = db.execute(
+                select(IngestionJob).where(IngestionJob.id == job_id)
+            ).scalar_one()
+        else:
+            job = IngestionJob(
+                id=new_id(),
+                tenant=tenant,
+                project=project,
+                source_path=str(safe),
+                status="running",
+            )
+            db.add(job)
         self._upsert_file_source(
             db, tenant=tenant, project=project, base_path=str(safe), recursive=recursive
         )
@@ -183,11 +217,23 @@ class IngestionService:
 
         for entry in scan.supported:
             file_path = Path(entry.path)
+
+            # Tell the progress bar what we're about to work on. Commit here
+            # so the polling endpoint sees the new filename even if the file
+            # turns out to be slow (large XLSX with many embedding calls).
+            job.current_file = entry.file_name
+            db.commit()
+
             try:
                 checksum = sha256_file(file_path)
             except OSError as exc:
                 failed += 1
                 errors.append(IngestError(file=str(file_path), error=f"hash failed: {exc}"))
+                self._update_job_progress(
+                    db, job,
+                    indexed=indexed, skipped=skipped, failed=failed,
+                    chunks_total=chunks_total,
+                )
                 continue
 
             doc, is_new = self._find_or_create_document(
@@ -206,6 +252,11 @@ class IngestionService:
             if unchanged and reindex_changed_only:
                 skipped += 1
                 db.commit()
+                self._update_job_progress(
+                    db, job,
+                    indexed=indexed, skipped=skipped, failed=failed,
+                    chunks_total=chunks_total,
+                )
                 continue
 
             # --- (Re)index ---------------------------------------------
@@ -222,6 +273,11 @@ class IngestionService:
                 db.commit()
                 failed += 1
                 errors.append(IngestError(file=str(file_path), error=str(exc)))
+                self._update_job_progress(
+                    db, job,
+                    indexed=indexed, skipped=skipped, failed=failed,
+                    chunks_total=chunks_total,
+                )
                 continue
 
             doc.checksum = checksum
@@ -233,11 +289,20 @@ class IngestionService:
             chunks_total += count
             indexed += 1
 
+            self._update_job_progress(
+                db, job,
+                indexed=indexed, skipped=skipped, failed=failed,
+                chunks_total=chunks_total,
+            )
+
         # --- finalise job --------------------------------------------------
         job.files_indexed = indexed
         job.files_skipped = skipped
         job.files_failed = failed
         job.chunks_created = chunks_total
+        # Clear the current_file marker — the UI uses None to know the run
+        # has reached a terminal state.
+        job.current_file = None
         job.status = "completed" if failed == 0 else "completed_with_errors"
         job.completed_at = datetime.now(timezone.utc)
         # Update file source ingest timestamp
