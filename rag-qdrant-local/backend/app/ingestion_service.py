@@ -136,6 +136,7 @@ class IngestionService:
         path: str,
         recursive: bool = True,
         reindex_changed_only: bool = True,
+        include_extensions: Optional[List[str]] = None,
     ) -> IngestPathResponse:
         # --- security ------------------------------------------------------
         try:
@@ -163,6 +164,14 @@ class IngestionService:
 
         # --- scan ----------------------------------------------------------
         scan = scan_directory(safe, recursive=recursive)
+
+        # --- optional include-extensions filter ---------------------------
+        # When the wizard ships an explicit whitelist (one checkbox per type
+        # found in the scan), narrow the work-set here so file counts, the
+        # job row and the response all reflect what the user asked for.
+        if include_extensions is not None:
+            scan = scan.filter_to_extensions(include_extensions)
+
         job.files_found = len(scan.supported)
         db.commit()
 

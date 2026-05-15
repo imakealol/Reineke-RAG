@@ -221,6 +221,7 @@ async def sources_ingest_path(
             path=req.path,
             recursive=req.recursive,
             reindex_changed_only=req.reindex_changed_only,
+            include_extensions=req.include_extensions,
         )
     except PathSecurityError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))

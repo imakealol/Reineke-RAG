@@ -31,6 +31,44 @@ class ScanResult:
     def all_files(self) -> List[FileEntry]:
         return [*self.supported, *self.unsupported]
 
+    def filter_to_extensions(self, allowed: Iterable[str]) -> "ScanResult":
+        """Return a new ScanResult restricted to ``allowed`` extensions.
+
+        - Comparison is case-insensitive; values are expected with the leading
+          dot (e.g. ``".pdf"``) but tolerate either form for safety.
+        - Files of other supported types move into ``unsupported`` so they
+          still show up in scan reports as "found but skipped".
+        - ``file_types`` is filtered to match, so badge counts in the UI
+          reflect what will actually be processed.
+        """
+        allowed_norm: set[str] = set()
+        for e in allowed:
+            if not e:
+                continue
+            v = e.strip().lower()
+            if not v:
+                continue
+            if not v.startswith("."):
+                v = "." + v
+            allowed_norm.add(v)
+
+        kept: List[FileEntry] = []
+        dropped: List[FileEntry] = []
+        for f in self.supported:
+            if f.extension.lower() in allowed_norm:
+                kept.append(f)
+            else:
+                dropped.append(f)
+
+        return ScanResult(
+            supported=kept,
+            unsupported=[*self.unsupported, *dropped],
+            file_types={
+                ext: n for ext, n in self.file_types.items()
+                if ext.lower() in allowed_norm
+            },
+        )
+
 
 def _iter_files(root: Path, recursive: bool) -> Iterable[Path]:
     if recursive:
