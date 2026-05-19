@@ -25,6 +25,15 @@ Override the target with environment variables when needed::
     RAG_EVAL_TENANT=ruberg RAG_EVAL_PROJECT=versuchsprotokolle \\
     RAG_EVAL_MIN_OUTCOME_RATE=0.7 \\
     pytest -m eval -v -s tests/eval/test_eval_retrieval.py
+
+For fast retrieval-only iteration (no LLM, ~30 s instead of ~30 min)::
+
+    RAG_EVAL_RETRIEVAL_ONLY=1 \\
+    pytest -m eval -v -s tests/eval/test_eval_retrieval.py
+
+Retrieval-only mode hits ``/retrieve`` instead of ``/chat`` and skips
+refusal questions plus the faithfulness keyword check — Recall@K, MRR,
+per-category breakdowns and latency remain meaningful.
 """
 
 from __future__ import annotations
@@ -126,6 +135,31 @@ def _query_chat(
         data.get("sources") or [],
         elapsed,
     )
+
+
+def _query_retrieve(
+    client: httpx.Client,
+    backend_url: str,
+    tenant: str,
+    project: str,
+    question: str,
+) -> Tuple[str, List[Dict[str, Any]], float]:
+    """POST to ``/retrieve`` — same retrieval path as ``/chat`` but no LLM.
+
+    Returns ``(answer, sources, latency)`` to keep the shape compatible
+    with ``_query_chat``. ``answer`` is always the empty string in this
+    mode because the LLM is not invoked.
+    """
+    started = time.monotonic()
+    resp = client.post(
+        f"{backend_url}/retrieve",
+        json={"tenant": tenant, "project": project, "question": question},
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    elapsed = time.monotonic() - started
+    resp.raise_for_status()
+    data = resp.json()
+    return ("", data.get("sources") or [], elapsed)
 
 
 def _score_question(
@@ -384,16 +418,36 @@ def test_eval_retrieval_scorecard(
                 f"status {r.status_code}: {r.text[:200]}"
             )
 
+    # Retrieval-only mode: hit /retrieve instead of /chat. Skips refusal
+    # questions (no answer text to inspect) and skips the faithfulness
+    # keyword check (likewise no answer). Recall@K, MRR, and latency
+    # remain meaningful and become ~30x faster to measure.
+    retrieval_only = os.environ.get("RAG_EVAL_RETRIEVAL_ONLY", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+    if retrieval_only:
+        scoreable = [q for q in raw_questions if not q.get("expected_refusal")]
+        skipped_refusals = len(raw_questions) - len(scoreable)
+    else:
+        scoreable = list(raw_questions)
+        skipped_refusals = 0
+
     # Live progress: each /chat call can take 10-60 s on CPU-bound setups,
     # so the user otherwise stares at a blank "collected 1 item" line for
     # several minutes. We print a single line per question: a "querying..."
     # prefix at the start, then complete it in-place with the result. Needs
     # ``pytest -s`` (no output capture) — the eval is documented as such.
-    total = len(raw_questions)
+    total = len(scoreable)
     print()  # break away from the pytest "::test_eval_retrieval_scorecard" line
+    if retrieval_only:
+        print(
+            f"  Retrieval-only mode (skipping {skipped_refusals} refusal question(s); "
+            "faithfulness not measured)."
+        )
     results: List[Dict[str, Any]] = []
     with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
-        for idx, q in enumerate(raw_questions, start=1):
+        for idx, q in enumerate(scoreable, start=1):
             qid = q.get("id", "?")
             cat = q.get("category", "uncategorized")
             print(
@@ -402,12 +456,17 @@ def test_eval_retrieval_scorecard(
                 flush=True,
             )
             try:
-                answer, sources, latency = _query_chat(
-                    client, eval_backend_url, eval_tenant, eval_project, q["question"]
-                )
+                if retrieval_only:
+                    answer, sources, latency = _query_retrieve(
+                        client, eval_backend_url, eval_tenant, eval_project, q["question"]
+                    )
+                else:
+                    answer, sources, latency = _query_chat(
+                        client, eval_backend_url, eval_tenant, eval_project, q["question"]
+                    )
             except httpx.HTTPError as exc:
                 print(f"✗ HTTP error: {exc}", flush=True)
-                # One failing /chat call must not kill the whole scorecard.
+                # One failing call must not kill the whole scorecard.
                 results.append({
                     "id": qid,
                     "category": cat,
@@ -427,7 +486,13 @@ def test_eval_retrieval_scorecard(
                     "error": str(exc),
                 })
                 continue
-            scored = _score_question(q, answer, sources, latency)
+            # In retrieval-only mode the answer is empty by construction —
+            # blank out expected_keywords so the keyword check is reported
+            # as "not measurable" (None), not a fake False.
+            q_for_scoring = (
+                {**q, "expected_keywords": None} if retrieval_only else q
+            )
+            scored = _score_question(q_for_scoring, answer, sources, latency)
             results.append(scored)
             print(_live_line(scored), flush=True)
 
@@ -440,6 +505,8 @@ def test_eval_retrieval_scorecard(
         "tenant": eval_tenant,
         "project": eval_project,
         "questions_path": str(eval_questions_path),
+        "retrieval_only": retrieval_only,
+        "skipped_refusal_questions": skipped_refusals,
         "aggregate": aggregate,
         "results": results,
     }
@@ -477,10 +544,11 @@ def test_eval_retrieval_scorecard(
         "quality is the number above."
     )
 
-    # Sanity assertion: every question must have produced a result so the
-    # scorecard is meaningful.
-    assert len(results) == len(raw_questions), (
-        f"Mismatch: {len(raw_questions)} questions configured, "
+    # Sanity assertion: every scoreable question must have produced a
+    # result so the scorecard is meaningful. In retrieval-only mode the
+    # set excludes refusal questions (LLM-only behaviour) by design.
+    assert len(results) == len(scoreable), (
+        f"Mismatch: {len(scoreable)} scoreable questions, "
         f"{len(results)} scored."
     )
 

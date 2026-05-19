@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .admin import RequestLogMiddleware, api_router as admin_api_router, html_router as admin_html_router
-from .chat_service import ChatService
+from .chat_service import ChatService, hits_to_sources
 from .config import settings
 from .database import get_db, init_db
 from .ingestion_service import IngestionService
@@ -44,6 +44,8 @@ from .schemas import (
     OpenAIModelEntry,
     OpenAIModelList,
     ReindexChangedRequest,
+    RetrieveRequest,
+    RetrieveResponse,
     ScanPathRequest,
     ScanPathResponse,
 )
@@ -307,6 +309,39 @@ async def chat_endpoint(
     except ValueError as exc:
         log.warning("Chat rejected (ValueError): %s", exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+# --- /retrieve (LLM-less retrieval for the eval runner) ---------------------
+
+@app.post("/retrieve", response_model=RetrieveResponse)
+async def retrieve_endpoint(
+    req: RetrieveRequest,
+    svc: ChatService = Depends(get_chat),
+) -> RetrieveResponse:
+    """Retrieve top-K sources for a question without invoking the LLM.
+
+    Same retrieval path as ``/chat`` — identical tenant/project filter,
+    identical score gate, identical embedding model — but skips prompt
+    assembly, history loading, generation and persistence. Used by the
+    eval runner to measure Recall@K / MRR in seconds instead of minutes.
+    """
+    try:
+        hits = await svc.retrieval.retrieve(
+            tenant=req.tenant,
+            project=req.project,
+            question=req.question,
+            top_k=req.top_k,
+        )
+    except OllamaError as exc:
+        log.exception("Retrieve failed (Ollama): %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Ollama: {exc}")
+    except QdrantStoreError as exc:
+        log.exception("Retrieve failed (Qdrant): %s", exc)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+    except ValueError as exc:
+        log.warning("Retrieve rejected (ValueError): %s", exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return RetrieveResponse(sources=hits_to_sources(hits))
 
 
 # --- /v1 (OpenAI-compatible — for OpenWebUI and similar clients) -----------

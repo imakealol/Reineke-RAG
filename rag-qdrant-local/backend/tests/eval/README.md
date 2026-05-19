@@ -61,6 +61,26 @@ pytest -m eval -v -s tests/eval/test_eval_retrieval.py
 
 `-s` ist wichtig — sonst schluckt pytest die Scorecard-Ausgabe.
 
+### Schneller Modus: Retrieval-only
+
+Beim iterativen Arbeiten an der **Retrieval-Schicht** (Chunking, Embeddings,
+Hybrid-Suche, Reranker) braucht man die LLM-Antwort nicht — Recall@K und
+MRR sind reine Retrieval-Metriken. Mit `RAG_EVAL_RETRIEVAL_ONLY=1` läuft
+die Eval gegen `/retrieve` statt `/chat`:
+
+```bash
+RAG_EVAL_RETRIEVAL_ONLY=1 pytest -m eval -v -s tests/eval/
+```
+
+Effekt:
+- ~30 s statt ~30 min pro Lauf (kein LLM-Call)
+- Refusal-Fragen werden übersprungen (kein Antworttext zum Prüfen)
+- Faithfulness wird nicht gemessen (gleiches Argument)
+- Recall@K, MRR, By-category und Latenz bleiben aussagekräftig
+
+Für PR-Belege weiter den vollen Lauf mit `/chat` machen — der schnelle
+Modus ist nur für den Dev-Loop.
+
 ## Metriken
 
 | Metrik | Bedeutung |
