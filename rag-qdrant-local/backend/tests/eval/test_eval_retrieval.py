@@ -37,6 +37,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+import unicodedata
+
 import httpx
 import pytest
 import yaml
@@ -60,7 +62,18 @@ REQUEST_TIMEOUT_SECONDS = 300
 # ---------------------------------------------------------------------------
 
 def _icontains(haystack: str, needle: str) -> bool:
-    return needle.lower() in (haystack or "").lower()
+    """Case-insensitive substring match that is also Unicode-normalisation safe.
+
+    macOS stores file names as NFD on disk (``ü`` = ``u`` + combining ¨),
+    so the names that come back from the ingest service end up NFD in
+    SQLite and in the ``/chat`` ``sources`` array. The eval YAML on the
+    other hand is typically saved as NFC by editors (precomposed ``ü``).
+    Both forms render identically but ``"u\\u0308" in "\\u00fc"`` is False,
+    so without normalising we get false-negative misses on every umlaut.
+    """
+    h = unicodedata.normalize("NFC", haystack or "").lower()
+    n = unicodedata.normalize("NFC", needle or "").lower()
+    return n in h
 
 
 def _any_icontains(haystack: str, needles: Iterable[str]) -> bool:
