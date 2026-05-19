@@ -172,19 +172,26 @@ def _apply_to_settings(key: str, value: Any) -> None:
 
 def apply_overrides() -> None:
     """Load all overrides from the DB and apply them to the live settings."""
+    # Materialize key/value pairs inside the session — the default
+    # `expire_on_commit=True` on session_scope detaches ORM instances on
+    # exit, so attribute access after the `with` block would raise
+    # DetachedInstanceError.
     with session_scope() as db:
-        rows = list(db.execute(select(SettingsOverride)).scalars().all())
-    for r in rows:
-        meta = _KEYS_BY_NAME.get(r.key)
+        overrides = [
+            (r.key, r.value)
+            for r in db.execute(select(SettingsOverride)).scalars().all()
+        ]
+    for key, raw_value in overrides:
+        meta = _KEYS_BY_NAME.get(key)
         if meta is None:
-            log.warning("Ignoring override for unknown key %s", r.key)
+            log.warning("Ignoring override for unknown key %s", key)
             continue
         try:
-            value = _coerce(meta, r.value)
-            _apply_to_settings(r.key, value)
-            log.info("Applied override %s = %r", r.key, value)
+            value = _coerce(meta, raw_value)
+            _apply_to_settings(key, value)
+            log.info("Applied override %s = %r", key, value)
         except Exception as exc:
-            log.warning("Could not apply override %s = %r (%s)", r.key, r.value, exc)
+            log.warning("Could not apply override %s = %r (%s)", key, raw_value, exc)
 
 
 def set_override(key: str, raw_value: str) -> Any:
