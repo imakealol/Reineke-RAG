@@ -1,6 +1,8 @@
 # Reineke-RAG retrieval quality eval-set
 #
-# Each entry produces one scored question in the eval scorecard. Run with:
+# Tailored to the ``reineke-watch`` corpus (Plasmatreat ISMS policies +
+# Maßnahmenpläne + CISO Security Actions; ~62 documents, German, IT
+# security domain). Run with:
 #
 #   pytest -m eval -v -s tests/eval/test_eval_retrieval.py
 #
@@ -22,96 +24,111 @@
 #   expected_keywords   — list of strings; at least one must appear in the
 #                         answer text (Faithfulness). Skipped when
 #                         expected_refusal: true.
-#
-# Editing tips:
-# - Keep questions in the language your users actually use (DE here).
-# - Prefer concrete questions over abstract ones — they are easier to score.
-# - Mark a question "hard" if dense-only retrieval is known to miss it; that
-#   is exactly the kind of question Hybrid / Reranker should fix.
 
-# ---------------------------------------------------------------------------
-# Starter set (12 questions, mostly from chat history with the amixon corpus).
-# Edit / extend to your real evaluation set before merging this PR.
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Named-entity questions — should hit a specific Richtlinie by topic name.
+# Dense-only retrieval is expected to do well here.
+# ===========================================================================
 
 - id: q01
   category: named_entity
   difficulty: easy
-  question: "Wurden bei Versuch 1576 Lubrizol AM 400-2591 ein VM 400 Mischer genutzt?"
-  expected_doc: "1576 Lubrizol AM 400-2591"
-  expected_keywords: ["Konusmischer", "AM 400-2591"]
+  question: "Welche Anforderungen stellt die Kennwort-Richtlinie an Passwörter?"
+  expected_doc: "Kennwort"               # PL.ISMS007_Kennwort_Richtlinie
+  expected_keywords: ["Passwort", "Kennwort", "Zeichen"]
 
 - id: q02
   category: named_entity
   difficulty: easy
-  question: "Welcher Mischertyp wurde bei dem Symrise Tesium VMT 200-1730 Versuch verwendet?"
-  expected_doc: "Symrise Tesium VMT 200-1730"
-  expected_keywords: ["Mischer"]
+  question: "Wie ist die Backup-Strategie laut der Backup-Richtlinie geregelt?"
+  expected_doc: "Backup"                 # PL.ISMS010_Backup-Richtlinie
+  expected_keywords: ["Backup", "Sicherung"]
 
 - id: q03
   category: named_entity
   difficulty: easy
-  question: "Was kannst du mir über den Ocsial VMT 200-1730 HMT 20-2324 Versuch sagen?"
-  expected_doc: "Ocsial VMT 200-1730"
-  expected_keywords: ["Ocsial"]
+  question: "Welche Regeln gibt es zu Bring Your Own Device (BYOD)?"
+  expected_doc: "BYOD"                   # PL.ISMS009_Bring_your_own_device_(BYOD)_Richtlinie
+  expected_keywords: ["BYOD", "eigene", "Gerät"]
 
 - id: q04
   category: named_entity
-  difficulty: medium
-  question: "In welchen Versuchsprotokollen wird der Mischer AM 400-2591 genannt?"
-  expected_docs_any: ["AM 400-2591"]
-  expected_keywords: ["AM 400-2591"]
+  difficulty: easy
+  question: "Wie wird mit Sicherheitsvorfällen umgegangen?"
+  expected_doc: "Vorfallmanagement"      # PL.ISMS005_Verfahren_zum_Vorfallmanagement
+  expected_keywords: ["Vorfall", "Meldung", "Reaktion"]
 
 - id: q05
   category: named_entity
-  difficulty: easy
-  question: "Welcher Versuch wurde mit Chr. Hansen DK durchgeführt?"
-  expected_doc: "Chr. Hansen DK"
-  expected_keywords: ["Hansen"]
+  difficulty: medium
+  question: "Welche Regelungen gibt es für Telearbeit und Homeoffice?"
+  expected_doc: "Telearbeit"             # PL.ISMS014_Richtline_zu_Mobilgeräten_Telearbeit_…
+  expected_keywords: ["Telearbeit", "Homeoffice", "Heimarbeit", "Mobilgerät"]
 
 - id: q06
   category: named_entity
-  difficulty: medium
-  question: "Was steht im Versuchsprotokoll zu Deutsche Vilomix VMT 200 - 1730?"
-  expected_doc: "Deutsche Vilomix"
-  expected_keywords: ["Vilomix"]
+  difficulty: easy
+  question: "Wie werden Informationen nach der Klassifizierungsrichtlinie eingestuft?"
+  expected_doc: "Klassifizierung"        # PL.ISMS015_Richtlinie_zur_Klassifizierung_von_Informationen
+  expected_keywords: ["Klassifizierung", "vertraulich", "öffentlich"]
+
+# ===========================================================================
+# Category queries — fuzzy concept queries that dense-only often misses.
+# Exactly the case Hybrid + Reranker should improve.
+# ===========================================================================
 
 - id: q07
   category: category_query
-  difficulty: hard
-  question: "Gibt es Versuche, bei denen Salze gemischt werden?"
-  expected_docs_any: ["NaCl", "Natriumchlorid", "Kalisalz", "Salz"]
-  expected_keywords: ["Salz", "NaCl", "Natriumchlorid"]
+  difficulty: medium
+  question: "Welche Regeln gelten für die Entsorgung vertraulicher Daten?"
+  expected_doc: "Entsorgung"             # PL.ISMS011_Richtlinie_zur_Entsorgung_und_Vernichtung
+  expected_keywords: ["Entsorgung", "Vernichtung", "schreddern"]
 
 - id: q08
   category: category_query
   difficulty: hard
-  question: "Welche Versuche verwenden pulverförmige Rohstoffe?"
-  expected_docs_any: ["Pulver"]
-  expected_keywords: ["Pulver"]
+  question: "Welche Vorgaben gibt es zum Umgang mit Verschlüsselung?"
+  expected_doc: "Verschlüsselung"        # PL.ISMS016_Richtlinie_des_Einsatzes_von_Verschlüsselung
+  expected_keywords: ["Verschlüsselung", "AES", "Schlüssel"]
 
 - id: q09
   category: category_query
-  difficulty: medium
-  question: "Welche Versuche wurden mit einem Konusmischer durchgeführt?"
-  expected_docs_any: ["Konusmischer", "AM 400-2591"]
-  expected_keywords: ["Konusmischer"]
+  difficulty: hard
+  question: "Welche Sicherheitsanforderungen gelten für externe Dienstleister?"
+  expected_doc: "Lieferanten"            # PL.ISMS017_Sicherheitspolitik_für_Lieferanten
+  expected_keywords: ["Lieferant", "Dienstleister", "extern"]
+
+# ===========================================================================
+# Table extraction — XLSX-based action plans. Hard for pypdf-style flat
+# parsing; should benefit from docling in Task 4.
+# ===========================================================================
 
 - id: q10
+  category: table_extraction
+  difficulty: hard
+  question: "Welche Maßnahmen stehen im Plasmatreat-Maßnahmenplan zu Phishing?"
+  expected_doc: "Phishing"               # Plasmatreat Maßnahmenplan Phishing.xlsx
+  expected_keywords: ["Phishing", "Mail"]
+
+- id: q11
+  category: table_extraction
+  difficulty: hard
+  question: "Was steht im Plasmatreat-Maßnahmenplan für USV?"
+  expected_doc: "USV"                    # Plasmatreat Maßnahmenplan MB Systemhaus USV.xlsx
+  expected_keywords: ["USV"]
+
+# ===========================================================================
+# Refusal questions — outside the corpus; system MUST refuse.
+# ===========================================================================
+
+- id: q12
   category: refusal
   difficulty: easy
   question: "Was ist der Siedepunkt von Quecksilber?"
   expected_refusal: true
 
-- id: q11
+- id: q13
   category: refusal
   difficulty: easy
-  question: "Wie hoch ist der DAX-Schlussstand vom 17. Mai 2026?"
+  question: "Wer hat das Champions-League-Finale 2026 gewonnen?"
   expected_refusal: true
-
-- id: q12
-  category: table_extraction
-  difficulty: hard
-  question: "Welche Stückzahl wurde im Versuch 706 verwendet?"
-  expected_doc: "706"
-  expected_keywords: ["706"]

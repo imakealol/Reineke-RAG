@@ -155,6 +155,29 @@ def _score_question(
     }
 
 
+def _live_line(scored: Dict[str, Any]) -> str:
+    """One-line summary for the live-progress output during a run.
+
+    Designed to be appended to a previously-printed "querying... " prefix
+    so the reader sees exactly which question finished, in what time, and
+    why it failed if it did. Kept short — one line per question.
+    """
+    latency = f"{scored['latency_seconds']:>5.1f}s"
+    if scored["expected_refusal"]:
+        if scored["is_refusal"]:
+            return f"✓ refused as expected  · {latency}"
+        return f"✗ refusal expected but got an answer  · {latency}"
+    rank = scored["rank"]
+    if rank is None:
+        return f"✗ no source matched  · {latency}"
+    keyword = scored["keyword_hit"]
+    kw_part = ""
+    if keyword is False:
+        kw_part = "  (answer missing keyword)"
+    icon = "✓" if scored["outcome"] else "✗"
+    return f"{icon} rank={rank}{kw_part}  · {latency}"
+
+
 def _aggregate(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Build the headline + per-category numbers from per-question scores."""
     answer_qs = [r for r in results if not r["expected_refusal"]]
@@ -339,18 +362,33 @@ def test_eval_retrieval_scorecard(
                 f"status {r.status_code}: {r.text[:200]}"
             )
 
+    # Live progress: each /chat call can take 10-60 s on CPU-bound setups,
+    # so the user otherwise stares at a blank "collected 1 item" line for
+    # several minutes. We print a single line per question: a "querying..."
+    # prefix at the start, then complete it in-place with the result. Needs
+    # ``pytest -s`` (no output capture) — the eval is documented as such.
+    total = len(raw_questions)
+    print()  # break away from the pytest "::test_eval_retrieval_scorecard" line
     results: List[Dict[str, Any]] = []
     with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
-        for q in raw_questions:
+        for idx, q in enumerate(raw_questions, start=1):
+            qid = q.get("id", "?")
+            cat = q.get("category", "uncategorized")
+            print(
+                f"  [{idx:2d}/{total}] {qid:<4} [{cat:<17}] querying... ",
+                end="",
+                flush=True,
+            )
             try:
                 answer, sources, latency = _query_chat(
                     client, eval_backend_url, eval_tenant, eval_project, q["question"]
                 )
             except httpx.HTTPError as exc:
+                print(f"✗ HTTP error: {exc}", flush=True)
                 # One failing /chat call must not kill the whole scorecard.
                 results.append({
-                    "id": q.get("id", "?"),
-                    "category": q.get("category", "uncategorized"),
+                    "id": qid,
+                    "category": cat,
                     "difficulty": q.get("difficulty", "unspecified"),
                     "question": q["question"],
                     "expected_refusal": bool(q.get("expected_refusal")),
@@ -367,7 +405,9 @@ def test_eval_retrieval_scorecard(
                     "error": str(exc),
                 })
                 continue
-            results.append(_score_question(q, answer, sources, latency))
+            scored = _score_question(q, answer, sources, latency)
+            results.append(scored)
+            print(_live_line(scored), flush=True)
 
     aggregate = _aggregate(results)
     run_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
