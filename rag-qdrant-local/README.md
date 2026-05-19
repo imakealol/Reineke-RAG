@@ -443,9 +443,25 @@ Die Tests decken ab:
 
 1. Pfadsicherheit: Allow-list, Traversal, Systempfade
 2. Scan eines erlaubten Pfads (rekursiv und nicht-rekursiv)
-3. XLSX- und DOCX-Extraktion
+3. XLSX-, DOCX- und HTML-Extraktion
 4. Qdrant-Suchfilter (Tenant/Project-Pflicht)
 5. Chat antwortet ohne Retrieval-Treffer mit dem Fallback-Text
+6. Ingest-Progress-Berechnung (Prozent, ETA, Terminal-State)
+7. Per-Job-Log-Capture (ContextVar-Isolation, Tail-Helper)
+
+CI führt diese Suite auf jedem PR aus (Python 3.11 + 3.12, GitHub Actions).
+
+### Retrieval-Quality-Eval (manuell, gegen ein laufendes Backend)
+
+Versionierter Fragenkatalog mit Recall@5 / MRR / Faithfulness / Latenz und
+Diff gegen den letzten Lauf:
+
+```bash
+# Backend muss laufen + Qdrant mit relevanter Tenant/Project-Kombi gefüllt
+pytest -m eval -v -s tests/eval/
+```
+
+Details + Fragen-Format: [`tests/eval/README.md`](./backend/tests/eval/README.md).
 
 Manuelle End-to-End-Tests siehe [`test_files/README.md`](./test_files/README.md).
 

@@ -51,6 +51,8 @@ jobs:
 
       - name: Run pytest
         # -ra prints reasons for skips/xfails next to failures.
-        # The suite is fully offline (no Qdrant/Ollama needed) so we can
-        # run it as-is on GitHub-hosted runners.
-        run: pytest -ra
+        # ``-m "not eval"`` skips the retrieval-quality scorecard, which
+        # needs a live backend with a populated Qdrant collection and is
+        # designed for manual runs against a real corpus.
+        # The remaining suite is fully offline (no Qdrant / Ollama / network).
+        run: pytest -ra -m "not eval"
