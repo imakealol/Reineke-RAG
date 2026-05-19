@@ -11,6 +11,8 @@ storage/converted/*
 storage/temp/*
 storage/job-logs/*
 storage/logs/*
+backend/tests/eval/results/*
+!backend/tests/eval/results/.gitkeep
 storage/rag.sqlite
 storage/rag.sqlite-*
 !storage/converted/.gitkeep

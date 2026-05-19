@@ -1,0 +1,117 @@
+# Reineke-RAG retrieval quality eval-set
+#
+# Each entry produces one scored question in the eval scorecard. Run with:
+#
+#   pytest -m eval -v -s tests/eval/test_eval_retrieval.py
+#
+# Required fields per question:
+#   id                  — short stable identifier (used in diff-to-last-run)
+#   category            — one of: named_entity, category_query, refusal, table_extraction
+#   question            — the user-facing prompt sent to /chat
+#   difficulty          — easy | medium | hard (advisory only — not scored)
+#
+# Exactly one of these answer expectations must be set:
+#   expected_doc        — case-insensitive substring expected in the file_name
+#                         of at least one source (used for Recall@K + MRR)
+#   expected_docs_any   — list; ANY substring matching is enough (for category
+#                         questions where multiple docs could be correct)
+#   expected_refusal    — true if the system MUST refuse with the
+#                         "Das steht nicht eindeutig..." phrase
+#
+# Optional:
+#   expected_keywords   — list of strings; at least one must appear in the
+#                         answer text (Faithfulness). Skipped when
+#                         expected_refusal: true.
+#
+# Editing tips:
+# - Keep questions in the language your users actually use (DE here).
+# - Prefer concrete questions over abstract ones — they are easier to score.
+# - Mark a question "hard" if dense-only retrieval is known to miss it; that
+#   is exactly the kind of question Hybrid / Reranker should fix.
+
+# ---------------------------------------------------------------------------
+# Starter set (12 questions, mostly from chat history with the amixon corpus).
+# Edit / extend to your real evaluation set before merging this PR.
+# ---------------------------------------------------------------------------
+
+- id: q01
+  category: named_entity
+  difficulty: easy
+  question: "Wurden bei Versuch 1576 Lubrizol AM 400-2591 ein VM 400 Mischer genutzt?"
+  expected_doc: "1576 Lubrizol AM 400-2591"
+  expected_keywords: ["Konusmischer", "AM 400-2591"]
+
+- id: q02
+  category: named_entity
+  difficulty: easy
+  question: "Welcher Mischertyp wurde bei dem Symrise Tesium VMT 200-1730 Versuch verwendet?"
+  expected_doc: "Symrise Tesium VMT 200-1730"
+  expected_keywords: ["Mischer"]
+
+- id: q03
+  category: named_entity
+  difficulty: easy
+  question: "Was kannst du mir über den Ocsial VMT 200-1730 HMT 20-2324 Versuch sagen?"
+  expected_doc: "Ocsial VMT 200-1730"
+  expected_keywords: ["Ocsial"]
+
+- id: q04
+  category: named_entity
+  difficulty: medium
+  question: "In welchen Versuchsprotokollen wird der Mischer AM 400-2591 genannt?"
+  expected_docs_any: ["AM 400-2591"]
+  expected_keywords: ["AM 400-2591"]
+
+- id: q05
+  category: named_entity
+  difficulty: easy
+  question: "Welcher Versuch wurde mit Chr. Hansen DK durchgeführt?"
+  expected_doc: "Chr. Hansen DK"
+  expected_keywords: ["Hansen"]
+
+- id: q06
+  category: named_entity
+  difficulty: medium
+  question: "Was steht im Versuchsprotokoll zu Deutsche Vilomix VMT 200 - 1730?"
+  expected_doc: "Deutsche Vilomix"
+  expected_keywords: ["Vilomix"]
+
+- id: q07
+  category: category_query
+  difficulty: hard
+  question: "Gibt es Versuche, bei denen Salze gemischt werden?"
+  expected_docs_any: ["NaCl", "Natriumchlorid", "Kalisalz", "Salz"]
+  expected_keywords: ["Salz", "NaCl", "Natriumchlorid"]
+
+- id: q08
+  category: category_query
+  difficulty: hard
+  question: "Welche Versuche verwenden pulverförmige Rohstoffe?"
+  expected_docs_any: ["Pulver"]
+  expected_keywords: ["Pulver"]
+
+- id: q09
+  category: category_query
+  difficulty: medium
+  question: "Welche Versuche wurden mit einem Konusmischer durchgeführt?"
+  expected_docs_any: ["Konusmischer", "AM 400-2591"]
+  expected_keywords: ["Konusmischer"]
+
+- id: q10
+  category: refusal
+  difficulty: easy
+  question: "Was ist der Siedepunkt von Quecksilber?"
+  expected_refusal: true
+
+- id: q11
+  category: refusal
+  difficulty: easy
+  question: "Wie hoch ist der DAX-Schlussstand vom 17. Mai 2026?"
+  expected_refusal: true
+
+- id: q12
+  category: table_extraction
+  difficulty: hard
+  question: "Welche Stückzahl wurde im Versuch 706 verwendet?"
+  expected_doc: "706"
+  expected_keywords: ["706"]
