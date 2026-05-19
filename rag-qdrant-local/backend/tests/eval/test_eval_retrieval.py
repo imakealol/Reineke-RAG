@@ -8,9 +8,12 @@ plus per-category breakdowns and a diff against the previous run:
     Faithfulness     — answer contains at least one expected keyword
     Refusal-Accuracy — refusal questions actually refused
 
-The eval is **not** a pass/fail gate; it is a report. The test assertion
-only checks that the backend was reachable and that every question
-produced a result — quality interpretation is up to the reader.
+By default this is a **report**, not a gate: a green ``PASSED`` means the
+eval harness ran successfully end-to-end (backend was reachable, every
+question produced a result). Quality is shown in the printed scorecard —
+not asserted by pytest. If you want pytest to FAIL when quality drops
+below a target, set ``RAG_EVAL_MIN_OUTCOME_RATE`` (e.g. ``0.7`` for 70 %
+of questions meeting their expectation).
 
 Run locally with the project's venv activated and the backend up::
 
@@ -20,17 +23,30 @@ Override the target with environment variables when needed::
 
     RAG_EVAL_BACKEND_URL=http://10.1.1.81:8000 \\
     RAG_EVAL_TENANT=ruberg RAG_EVAL_PROJECT=versuchsprotokolle \\
+    RAG_EVAL_MIN_OUTCOME_RATE=0.7 \\
     pytest -m eval -v -s tests/eval/test_eval_retrieval.py
+
+For fast retrieval-only iteration (no LLM, ~30 s instead of ~30 min)::
+
+    RAG_EVAL_RETRIEVAL_ONLY=1 \\
+    pytest -m eval -v -s tests/eval/test_eval_retrieval.py
+
+Retrieval-only mode hits ``/retrieve`` instead of ``/chat`` and skips
+refusal questions plus the faithfulness keyword check — Recall@K, MRR,
+per-category breakdowns and latency remain meaningful.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import statistics
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+import unicodedata
 
 import httpx
 import pytest
@@ -43,7 +59,11 @@ import yaml
 
 REFUSAL_SUBSTRING = "nicht eindeutig"          # canonical refusal phrase
 RECALL_TOP_K = 5
-REQUEST_TIMEOUT_SECONDS = 120                  # cold-loaded Ollama can take a while
+# Generous timeout — must cover CPU-fallback runs (a single /chat call on a
+# 27B model in CPU mode can reach ~150 s) without aborting. We would rather
+# get a real (slow) datapoint than a HTTP-error placeholder that pollutes
+# the scorecard.
+REQUEST_TIMEOUT_SECONDS = 300
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +71,18 @@ REQUEST_TIMEOUT_SECONDS = 120                  # cold-loaded Ollama can take a w
 # ---------------------------------------------------------------------------
 
 def _icontains(haystack: str, needle: str) -> bool:
-    return needle.lower() in (haystack or "").lower()
+    """Case-insensitive substring match that is also Unicode-normalisation safe.
+
+    macOS stores file names as NFD on disk (``ü`` = ``u`` + combining ¨),
+    so the names that come back from the ingest service end up NFD in
+    SQLite and in the ``/chat`` ``sources`` array. The eval YAML on the
+    other hand is typically saved as NFC by editors (precomposed ``ü``).
+    Both forms render identically but ``"u\\u0308" in "\\u00fc"`` is False,
+    so without normalising we get false-negative misses on every umlaut.
+    """
+    h = unicodedata.normalize("NFC", haystack or "").lower()
+    n = unicodedata.normalize("NFC", needle or "").lower()
+    return n in h
 
 
 def _any_icontains(haystack: str, needles: Iterable[str]) -> bool:
@@ -106,6 +137,31 @@ def _query_chat(
     )
 
 
+def _query_retrieve(
+    client: httpx.Client,
+    backend_url: str,
+    tenant: str,
+    project: str,
+    question: str,
+) -> Tuple[str, List[Dict[str, Any]], float]:
+    """POST to ``/retrieve`` — same retrieval path as ``/chat`` but no LLM.
+
+    Returns ``(answer, sources, latency)`` to keep the shape compatible
+    with ``_query_chat``. ``answer`` is always the empty string in this
+    mode because the LLM is not invoked.
+    """
+    started = time.monotonic()
+    resp = client.post(
+        f"{backend_url}/retrieve",
+        json={"tenant": tenant, "project": project, "question": question},
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    elapsed = time.monotonic() - started
+    resp.raise_for_status()
+    data = resp.json()
+    return ("", data.get("sources") or [], elapsed)
+
+
 def _score_question(
     q: Dict[str, Any],
     answer: str,
@@ -153,6 +209,29 @@ def _score_question(
         "outcome": outcome,
         "latency_seconds": round(latency_s, 3),
     }
+
+
+def _live_line(scored: Dict[str, Any]) -> str:
+    """One-line summary for the live-progress output during a run.
+
+    Designed to be appended to a previously-printed "querying... " prefix
+    so the reader sees exactly which question finished, in what time, and
+    why it failed if it did. Kept short — one line per question.
+    """
+    latency = f"{scored['latency_seconds']:>5.1f}s"
+    if scored["expected_refusal"]:
+        if scored["is_refusal"]:
+            return f"✓ refused as expected  · {latency}"
+        return f"✗ refusal expected but got an answer  · {latency}"
+    rank = scored["rank"]
+    if rank is None:
+        return f"✗ no source matched  · {latency}"
+    keyword = scored["keyword_hit"]
+    kw_part = ""
+    if keyword is False:
+        kw_part = "  (answer missing keyword)"
+    icon = "✓" if scored["outcome"] else "✗"
+    return f"{icon} rank={rank}{kw_part}  · {latency}"
 
 
 def _aggregate(results: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -339,18 +418,58 @@ def test_eval_retrieval_scorecard(
                 f"status {r.status_code}: {r.text[:200]}"
             )
 
+    # Retrieval-only mode: hit /retrieve instead of /chat. Skips refusal
+    # questions (no answer text to inspect) and skips the faithfulness
+    # keyword check (likewise no answer). Recall@K, MRR, and latency
+    # remain meaningful and become ~30x faster to measure.
+    retrieval_only = os.environ.get("RAG_EVAL_RETRIEVAL_ONLY", "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+    if retrieval_only:
+        scoreable = [q for q in raw_questions if not q.get("expected_refusal")]
+        skipped_refusals = len(raw_questions) - len(scoreable)
+    else:
+        scoreable = list(raw_questions)
+        skipped_refusals = 0
+
+    # Live progress: each /chat call can take 10-60 s on CPU-bound setups,
+    # so the user otherwise stares at a blank "collected 1 item" line for
+    # several minutes. We print a single line per question: a "querying..."
+    # prefix at the start, then complete it in-place with the result. Needs
+    # ``pytest -s`` (no output capture) — the eval is documented as such.
+    total = len(scoreable)
+    print()  # break away from the pytest "::test_eval_retrieval_scorecard" line
+    if retrieval_only:
+        print(
+            f"  Retrieval-only mode (skipping {skipped_refusals} refusal question(s); "
+            "faithfulness not measured)."
+        )
     results: List[Dict[str, Any]] = []
     with httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS) as client:
-        for q in raw_questions:
+        for idx, q in enumerate(scoreable, start=1):
+            qid = q.get("id", "?")
+            cat = q.get("category", "uncategorized")
+            print(
+                f"  [{idx:2d}/{total}] {qid:<4} [{cat:<17}] querying... ",
+                end="",
+                flush=True,
+            )
             try:
-                answer, sources, latency = _query_chat(
-                    client, eval_backend_url, eval_tenant, eval_project, q["question"]
-                )
+                if retrieval_only:
+                    answer, sources, latency = _query_retrieve(
+                        client, eval_backend_url, eval_tenant, eval_project, q["question"]
+                    )
+                else:
+                    answer, sources, latency = _query_chat(
+                        client, eval_backend_url, eval_tenant, eval_project, q["question"]
+                    )
             except httpx.HTTPError as exc:
-                # One failing /chat call must not kill the whole scorecard.
+                print(f"✗ HTTP error: {exc}", flush=True)
+                # One failing call must not kill the whole scorecard.
                 results.append({
-                    "id": q.get("id", "?"),
-                    "category": q.get("category", "uncategorized"),
+                    "id": qid,
+                    "category": cat,
                     "difficulty": q.get("difficulty", "unspecified"),
                     "question": q["question"],
                     "expected_refusal": bool(q.get("expected_refusal")),
@@ -367,7 +486,15 @@ def test_eval_retrieval_scorecard(
                     "error": str(exc),
                 })
                 continue
-            results.append(_score_question(q, answer, sources, latency))
+            # In retrieval-only mode the answer is empty by construction —
+            # blank out expected_keywords so the keyword check is reported
+            # as "not measurable" (None), not a fake False.
+            q_for_scoring = (
+                {**q, "expected_keywords": None} if retrieval_only else q
+            )
+            scored = _score_question(q_for_scoring, answer, sources, latency)
+            results.append(scored)
+            print(_live_line(scored), flush=True)
 
     aggregate = _aggregate(results)
     run_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -378,6 +505,8 @@ def test_eval_retrieval_scorecard(
         "tenant": eval_tenant,
         "project": eval_project,
         "questions_path": str(eval_questions_path),
+        "retrieval_only": retrieval_only,
+        "skipped_refusal_questions": skipped_refusals,
         "aggregate": aggregate,
         "results": results,
     }
@@ -391,9 +520,51 @@ def test_eval_retrieval_scorecard(
     out_path.write_text(json.dumps(scorecard, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"Scorecard written to {out_path}")
 
-    # Sanity assertion: every question must have produced a result so the
-    # scorecard is meaningful.
-    assert len(results) == len(raw_questions), (
-        f"Mismatch: {len(raw_questions)} questions configured, "
+    # Loud TL;DR so the eye is not fooled by pytest's green PASSED line
+    # below — that PASSED only means the harness ran, not that quality is
+    # good. ``outcome=True`` for an answer-question requires both the right
+    # source AND a matching keyword; for a refusal question, the system
+    # had to refuse. Anything else is a miss here.
+    n_met = sum(1 for r in results if r["outcome"])
+    n_total = len(results)
+    outcome_rate = (n_met / n_total) if n_total else 0.0
+    pct = outcome_rate * 100.0
+    if n_met == n_total:
+        marker = "✓"
+    elif n_met == 0:
+        marker = "✗"
+    else:
+        marker = "⚠"
+    print()
+    print(
+        f"{marker} Outcome: {n_met}/{n_total} questions met expectation ({pct:.1f} %)."
+    )
+    print(
+        "  Note: green PASSED below only means the eval harness completed; "
+        "quality is the number above."
+    )
+
+    # Sanity assertion: every scoreable question must have produced a
+    # result so the scorecard is meaningful. In retrieval-only mode the
+    # set excludes refusal questions (LLM-only behaviour) by design.
+    assert len(results) == len(scoreable), (
+        f"Mismatch: {len(scoreable)} scoreable questions, "
         f"{len(results)} scored."
     )
+
+    # Optional: opt-in hard fail when quality drops below a configured
+    # threshold. Off by default so the eval works as a report; turn it on
+    # in pre-merge runs when a quality regression should block the PR.
+    threshold_env = os.environ.get("RAG_EVAL_MIN_OUTCOME_RATE", "").strip()
+    if threshold_env:
+        try:
+            threshold = float(threshold_env)
+        except ValueError:
+            pytest.fail(
+                f"RAG_EVAL_MIN_OUTCOME_RATE={threshold_env!r} is not a number "
+                f"(expected something like 0.7)."
+            )
+        assert outcome_rate >= threshold, (
+            f"Outcome rate {pct:.1f} % is below RAG_EVAL_MIN_OUTCOME_RATE "
+            f"target {threshold * 100:.1f} %."
+        )

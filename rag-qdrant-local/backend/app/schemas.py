@@ -177,6 +177,17 @@ class ChatResponse(BaseModel):
     session_id: str
 
 
+# ----- Retrieve (LLM-less; used by the eval runner for fast iteration) ------
+
+class RetrieveRequest(TenantProject):
+    question: str = Field(min_length=1)
+    top_k: Optional[int] = None
+
+
+class RetrieveResponse(BaseModel):
+    sources: List[ChatSource]
+
+
 # ----- OpenAI-compatible /v1/chat/completions --------------------------------
 
 class OpenAIMessage(BaseModel):

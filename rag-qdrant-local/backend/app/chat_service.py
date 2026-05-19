@@ -58,6 +58,30 @@ NO_CONTEXT_ANSWER = "Das steht nicht eindeutig in den bereitgestellten Dokumente
 SessionFactory = Callable[[], ContextManager[Session]]
 
 
+def hits_to_sources(hits: List[SearchHit]) -> List[ChatSource]:
+    """Map raw Qdrant hits to the public ``ChatSource`` schema.
+
+    Lives at module level so the LLM-less ``/retrieve`` endpoint can reuse
+    it without depending on ChatService.
+    """
+    out: List[ChatSource] = []
+    for h in hits:
+        p = h.payload
+        out.append(
+            ChatSource(
+                file_name=p.get("file_name", "?"),
+                document_id=p.get("document_id", ""),
+                sheet=p.get("sheet"),
+                row_start=p.get("row_start"),
+                row_end=p.get("row_end"),
+                page=p.get("page"),
+                chunk_index=int(p.get("chunk_index", 0) or 0),
+                score=float(h.score),
+            )
+        )
+    return out
+
+
 class ChatService:
     def __init__(
         self,
@@ -219,24 +243,6 @@ class ChatService:
             )
         return "\n\n".join(blocks)
 
-    @staticmethod
-    def _hits_to_sources(hits: List[SearchHit]) -> List[ChatSource]:
-        out: List[ChatSource] = []
-        for h in hits:
-            p = h.payload
-            out.append(
-                ChatSource(
-                    file_name=p.get("file_name", "?"),
-                    document_id=p.get("document_id", ""),
-                    sheet=p.get("sheet"),
-                    row_start=p.get("row_start"),
-                    row_end=p.get("row_end"),
-                    page=p.get("page"),
-                    chunk_index=int(p.get("chunk_index", 0) or 0),
-                    score=float(h.score),
-                )
-            )
-        return out
 
     @staticmethod
     def _format_sources_block(sources: List[ChatSource]) -> str:
@@ -310,7 +316,7 @@ class ChatService:
             return ChatResponse(answer=answer, sources=[], session_id=resolved_session_id)
 
         context = self._build_context(hits)
-        sources = self._hits_to_sources(hits)
+        sources = hits_to_sources(hits)
         sources_block = self._format_sources_block(sources)
 
         user_prompt = (

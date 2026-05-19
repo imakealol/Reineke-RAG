@@ -12,6 +12,7 @@ Two strategies live here:
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from typing import List, Optional
@@ -29,6 +30,29 @@ class Chunk:
     sheet: Optional[str] = None
     row_start: Optional[int] = None
     row_end: Optional[int] = None
+
+
+# ---------------------------------------------------------------------------
+# Filename prefix — embedded at the start of every chunk so the embedder
+# (and any future BM25 layer) sees keywords that only appear in the file
+# name itself, e.g. "Phishing" in "Plasmatreat Maßnahmenplan Phishing.xlsx"
+# whose row contents are too generic to retrieve.
+# ---------------------------------------------------------------------------
+
+_FILENAME_DATE_SUFFIX_RE = re.compile(r"_\d{8}$")          # _YYYYMMDD
+_FILENAME_VERSION_SUFFIX_RE = re.compile(r"[_\-]v\d+$")    # _v2, -v10
+
+
+def _filename_prefix(file_name: str) -> str:
+    """Return a short ``[Datei: ...] `` header to prepend to every chunk
+    text. Strips the file extension plus obvious version (``_v2``) and ISO
+    date (``_20251231``) suffixes so the prefix carries semantic words and
+    not bookkeeping noise. Two passes in case a name carries both suffixes.
+    """
+    stem = os.path.splitext(file_name)[0]
+    stem = _FILENAME_DATE_SUFFIX_RE.sub("", stem)
+    stem = _FILENAME_VERSION_SUFFIX_RE.sub("", stem)
+    return f"[Datei: {stem}] "
 
 
 # ---------------------------------------------------------------------------
@@ -102,11 +126,13 @@ def _chunk_text(text: str, size: int, overlap: int) -> List[str]:
     return chunks
 
 
-def _chunk_text_segment(seg: LoadedSegment, start_index: int) -> List[Chunk]:
+def _chunk_text_segment(
+    seg: LoadedSegment, start_index: int, *, filename_prefix: str = ""
+) -> List[Chunk]:
     pieces = _chunk_text(seg.text, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP)
     return [
         Chunk(
-            text=piece,
+            text=filename_prefix + piece,
             chunk_index=start_index + i,
             document_type=seg.document_type,
             page=seg.page,
@@ -131,8 +157,15 @@ def _xlsx_rows_per_chunk(num_columns: int) -> int:
     return max(10, base - 20)
 
 
-def _chunk_spreadsheet_segment(seg: LoadedSegment, start_index: int) -> List[Chunk]:
-    """Re-chunk an XLSX segment into row-bounded blocks with header repetition."""
+def _chunk_spreadsheet_segment(
+    seg: LoadedSegment, start_index: int, *, filename_prefix: str = ""
+) -> List[Chunk]:
+    """Re-chunk an XLSX segment into row-bounded blocks with header repetition.
+
+    When a ``filename_prefix`` is supplied, it is prepended to every chunk
+    text *and* subtracted from the per-chunk char budget — so the original
+    ``XLSX_MAX_CHARS_PER_CHUNK`` invariant still holds for the full chunk.
+    """
     lines = seg.text.split("\n")
     if not lines:
         return []
@@ -146,7 +179,7 @@ def _chunk_spreadsheet_segment(seg: LoadedSegment, start_index: int) -> List[Chu
     if not data_lines:
         return [
             Chunk(
-                text=seg.text,
+                text=filename_prefix + seg.text,
                 chunk_index=start_index,
                 document_type=seg.document_type,
                 sheet=seg.sheet,
@@ -162,18 +195,22 @@ def _chunk_spreadsheet_segment(seg: LoadedSegment, start_index: int) -> List[Chu
 
     base_row = seg.row_start or 1  # spreadsheet row of data_lines[0]
 
+    # Pack fewer rows when the prefix eats into the budget — the public
+    # contract "each chunk ≤ XLSX_MAX_CHARS_PER_CHUNK" must keep holding.
+    effective_budget = max(1, settings.XLSX_MAX_CHARS_PER_CHUNK - len(filename_prefix))
+
     chunks: List[Chunk] = []
     for i in range(0, len(data_lines), rows_per_chunk):
         block = data_lines[i : i + rows_per_chunk]
         for sub_block, sub_offset in _enforce_char_budget(
-            block, header_line, settings.XLSX_MAX_CHARS_PER_CHUNK
+            block, header_line, effective_budget
         ):
             text_lines = [header_line] + sub_block if header_line else sub_block
             row_start = base_row + i + sub_offset
             row_end = row_start + len(sub_block) - 1
             chunks.append(
                 Chunk(
-                    text="\n".join(text_lines),
+                    text=filename_prefix + "\n".join(text_lines),
                     chunk_index=start_index + len(chunks),
                     document_type=seg.document_type,
                     sheet=seg.sheet,
@@ -232,10 +269,15 @@ def _enforce_char_budget(
 # ---------------------------------------------------------------------------
 
 def chunk_document(doc: LoadedDocument) -> List[Chunk]:
+    prefix = _filename_prefix(doc.file_name)
     chunks: List[Chunk] = []
     for seg in doc.segments:
         if seg.document_type == "xlsx":
-            chunks.extend(_chunk_spreadsheet_segment(seg, len(chunks)))
+            chunks.extend(
+                _chunk_spreadsheet_segment(seg, len(chunks), filename_prefix=prefix)
+            )
         else:
-            chunks.extend(_chunk_text_segment(seg, len(chunks)))
+            chunks.extend(
+                _chunk_text_segment(seg, len(chunks), filename_prefix=prefix)
+            )
     return chunks
