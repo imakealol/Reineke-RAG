@@ -20,6 +20,29 @@ tests/eval/
 - Qdrant + Ollama erreichbar und mit der zu prüfenden Tenant/Project-Kombi
   bereits ingestiert
 
+## Pass / Fail-Semantik
+
+Standard: **das ist ein Bericht, kein Gate.** Grün heißt nur, dass das
+Eval-Harness durchgelaufen ist (Backend war erreichbar, alle Fragen
+produzierten ein Ergebnis). **Qualität liest du aus der Scorecard.** Direkt
+unter der Scorecard steht jetzt zusätzlich eine deutliche TL;DR-Zeile:
+
+```
+⚠ Outcome: 3/13 questions met expectation (23.1 %).
+  Note: green PASSED below only means the eval harness completed;
+  quality is the number above.
+```
+
+Wenn du in einem Quality-PR die Eval als **harten Gate** willst, setze
+`RAG_EVAL_MIN_OUTCOME_RATE` auf einen Schwellwert zwischen 0 und 1:
+
+```bash
+RAG_EVAL_MIN_OUTCOME_RATE=0.7 pytest -m eval -v -s tests/eval/
+```
+
+Dann scheitert pytest mit einer klaren Assertion, sobald weniger als 70 %
+der Fragen ihre Erwartung erfüllen.
+
 ## Ausführen
 
 ```bash
