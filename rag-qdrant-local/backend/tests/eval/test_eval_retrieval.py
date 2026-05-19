@@ -48,7 +48,11 @@ import yaml
 
 REFUSAL_SUBSTRING = "nicht eindeutig"          # canonical refusal phrase
 RECALL_TOP_K = 5
-REQUEST_TIMEOUT_SECONDS = 120                  # cold-loaded Ollama can take a while
+# Generous timeout — must cover CPU-fallback runs (a single /chat call on a
+# 27B model in CPU mode can reach ~150 s) without aborting. We would rather
+# get a real (slow) datapoint than a HTTP-error placeholder that pollutes
+# the scorecard.
+REQUEST_TIMEOUT_SECONDS = 300
 
 
 # ---------------------------------------------------------------------------
