@@ -8,9 +8,12 @@ plus per-category breakdowns and a diff against the previous run:
     Faithfulness     — answer contains at least one expected keyword
     Refusal-Accuracy — refusal questions actually refused
 
-The eval is **not** a pass/fail gate; it is a report. The test assertion
-only checks that the backend was reachable and that every question
-produced a result — quality interpretation is up to the reader.
+By default this is a **report**, not a gate: a green ``PASSED`` means the
+eval harness ran successfully end-to-end (backend was reachable, every
+question produced a result). Quality is shown in the printed scorecard —
+not asserted by pytest. If you want pytest to FAIL when quality drops
+below a target, set ``RAG_EVAL_MIN_OUTCOME_RATE`` (e.g. ``0.7`` for 70 %
+of questions meeting their expectation).
 
 Run locally with the project's venv activated and the backend up::
 
@@ -20,12 +23,14 @@ Override the target with environment variables when needed::
 
     RAG_EVAL_BACKEND_URL=http://10.1.1.81:8000 \\
     RAG_EVAL_TENANT=ruberg RAG_EVAL_PROJECT=versuchsprotokolle \\
+    RAG_EVAL_MIN_OUTCOME_RATE=0.7 \\
     pytest -m eval -v -s tests/eval/test_eval_retrieval.py
 """
 
 from __future__ import annotations
 
 import json
+import os
 import statistics
 import time
 from datetime import datetime, timezone
@@ -431,9 +436,50 @@ def test_eval_retrieval_scorecard(
     out_path.write_text(json.dumps(scorecard, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"Scorecard written to {out_path}")
 
+    # Loud TL;DR so the eye is not fooled by pytest's green PASSED line
+    # below — that PASSED only means the harness ran, not that quality is
+    # good. ``outcome=True`` for an answer-question requires both the right
+    # source AND a matching keyword; for a refusal question, the system
+    # had to refuse. Anything else is a miss here.
+    n_met = sum(1 for r in results if r["outcome"])
+    n_total = len(results)
+    outcome_rate = (n_met / n_total) if n_total else 0.0
+    pct = outcome_rate * 100.0
+    if n_met == n_total:
+        marker = "✓"
+    elif n_met == 0:
+        marker = "✗"
+    else:
+        marker = "⚠"
+    print()
+    print(
+        f"{marker} Outcome: {n_met}/{n_total} questions met expectation ({pct:.1f} %)."
+    )
+    print(
+        "  Note: green PASSED below only means the eval harness completed; "
+        "quality is the number above."
+    )
+
     # Sanity assertion: every question must have produced a result so the
     # scorecard is meaningful.
     assert len(results) == len(raw_questions), (
         f"Mismatch: {len(raw_questions)} questions configured, "
         f"{len(results)} scored."
     )
+
+    # Optional: opt-in hard fail when quality drops below a configured
+    # threshold. Off by default so the eval works as a report; turn it on
+    # in pre-merge runs when a quality regression should block the PR.
+    threshold_env = os.environ.get("RAG_EVAL_MIN_OUTCOME_RATE", "").strip()
+    if threshold_env:
+        try:
+            threshold = float(threshold_env)
+        except ValueError:
+            pytest.fail(
+                f"RAG_EVAL_MIN_OUTCOME_RATE={threshold_env!r} is not a number "
+                f"(expected something like 0.7)."
+            )
+        assert outcome_rate >= threshold, (
+            f"Outcome rate {pct:.1f} % is below RAG_EVAL_MIN_OUTCOME_RATE "
+            f"target {threshold * 100:.1f} %."
+        )
