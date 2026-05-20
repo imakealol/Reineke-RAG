@@ -38,6 +38,9 @@ class HealthResponse(BaseModel):
     ollama: HealthCheckItem
     embedding_model: HealthCheckItem
     chat_model: HealthCheckItem
+    # Reranker is a *soft* dependency — disabled or not-yet-loaded both
+    # report ok=true. ok=false only when enabled but actively broken.
+    reranker: HealthCheckItem
 
 
 # ----- Sources ---------------------------------------------------------------

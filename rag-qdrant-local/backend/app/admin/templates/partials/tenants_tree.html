@@ -74,6 +74,37 @@
               </div>
             </form>
 
+            <!-- Reranking -->
+            <form class="mb-3 pb-3 border-bottom"
+                  hx-post="/admin/api/agents/{{ tenant|urlencode }}/{{ p.project|urlencode }}/rerank"
+                  hx-target="#prompt-{{ pipe_id }}-status"
+                  hx-swap="innerHTML">
+              <label class="small text-secondary mb-1">
+                Reranking für <code>{{ tenant }} / {{ p.project }}</code>
+                — Auto = abhängig von Dokumentanzahl
+                ({{ p.rerank_effective.doc_count }} Dok.,
+                Auto-Schwelle = {{ p.rerank_effective.doc_count }} ≥ 100 → an).
+                Aktuell: <strong>{{ "aktiv" if p.rerank_effective.enabled else "inaktiv" }}</strong>
+                (Quelle: <code>{{ p.rerank_effective.enabled_source }}</code>;
+                K = {{ p.rerank_effective.overfetch_k }} aus <code>{{ p.rerank_effective.overfetch_k_source }}</code>).
+              </label>
+              <div class="d-flex gap-2">
+                <select class="form-select form-select-sm" name="rerank_enabled" style="max-width: 160px;">
+                  <option value="auto" {% if p.rerank_choice == "auto" %}selected{% endif %}>Auto</option>
+                  <option value="on" {% if p.rerank_choice == "on" %}selected{% endif %}>An (Override)</option>
+                  <option value="off" {% if p.rerank_choice == "off" %}selected{% endif %}>Aus (Override)</option>
+                </select>
+                <input type="number"
+                       class="form-control form-control-sm"
+                       style="max-width: 160px;"
+                       name="rerank_overfetch_k"
+                       min="1" max="500"
+                       value="{{ p.rerank_overfetch_k_override or '' }}"
+                       placeholder="K (auto: {{ p.rerank_effective.overfetch_k }})">
+                <button type="submit" class="btn btn-sm btn-primary">↳</button>
+              </div>
+            </form>
+
             <!-- Persona-Prompt -->
             <form hx-post="/admin/api/agents/{{ tenant|urlencode }}/{{ p.project|urlencode }}/prompt"
                   hx-target="#prompt-{{ pipe_id }}-status"
