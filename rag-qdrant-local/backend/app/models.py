@@ -61,6 +61,17 @@ class Document(Base):
     status: Mapped[str] = mapped_column(String(32), default="pending")
     chunks_count: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Connector discriminator. Default ``filesystem`` covers every Document
+    # that came in through the path-based ingest. ``mediawiki_page`` /
+    # ``mediawiki_upload`` are added by the MediaWiki connector; future
+    # connectors get their own values.
+    source_type: Mapped[str] = mapped_column(
+        String(32), default="filesystem", server_default="filesystem", index=True
+    )
+    # JSON blob for connector-specific extras (page_id, revision_id,
+    # categories, linked_files, page_url, …). Schema is owned by the
+    # producer connector — opaque to the chunking/embedding/retrieval code.
+    source_metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow

@@ -15,6 +15,9 @@ from sqlalchemy.orm import Session
 
 from .admin import RequestLogMiddleware, api_router as admin_api_router, html_router as admin_html_router
 from .chat_service import ChatService, hits_to_sources
+from .connectors.mediawiki.errors import MediaWikiError
+from .connectors.mediawiki.schemas import ImportXMLRequest, ImportXMLResponse
+from .connectors.mediawiki.service import MediaWikiImportService
 from .config import settings
 from .database import get_db, init_db
 from .ingestion_service import IngestionService
@@ -337,6 +340,60 @@ async def chat_endpoint(
     except ValueError as exc:
         log.warning("Chat rejected (ValueError): %s", exc)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+# --- /sources/mediawiki ----------------------------------------------------
+
+@app.post("/sources/mediawiki/import-xml", response_model=ImportXMLResponse)
+async def sources_mediawiki_import_xml(
+    req: ImportXMLRequest,
+    db: Session = Depends(get_db),
+) -> ImportXMLResponse:
+    """Import a MediaWiki XML export (Mode A).
+
+    ``xml_path`` and ``uploads_path`` are validated against
+    ``ALLOWED_BASE_PATHS`` before the connector touches them. With
+    ``dry_run=true`` the response counts what *would* be indexed but
+    writes nothing to SQLite or Qdrant.
+    """
+    service = MediaWikiImportService()
+    try:
+        result = await service.import_xml(
+            db,
+            tenant=req.tenant,
+            project=req.project,
+            xml_path=req.xml_path,
+            uploads_path=req.uploads_path,
+            wiki=req.wiki,
+            allowed_namespaces=req.allowed_namespaces,
+            include_redirects=req.include_redirects,
+            include_uploads=req.include_uploads,
+            reindex_changed_only=req.reindex_changed_only,
+            dry_run=req.dry_run,
+        )
+    except PathSecurityError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except MediaWikiError as exc:
+        log.exception("MediaWiki import failed: %s", exc)
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return ImportXMLResponse(
+        status="ok" if not result.errors else "partial",
+        mode="xml",
+        dry_run=req.dry_run,
+        pages_seen=result.pages_seen,
+        pages_indexed=result.pages_indexed,
+        pages_skipped_namespace=result.pages_skipped_namespace,
+        pages_skipped_redirect=result.pages_skipped_redirect,
+        pages_skipped_unchanged=result.pages_skipped_unchanged,
+        files_seen=result.files_seen,
+        files_indexed=result.files_indexed,
+        files_skipped_unsupported=result.files_skipped_unsupported,
+        files_skipped_unchanged=result.files_skipped_unchanged,
+        unresolved_files=result.unresolved_files,
+        warnings=result.warnings,
+        errors=result.errors,
+    )
 
 
 # --- /retrieve (LLM-less retrieval for the eval runner) ---------------------

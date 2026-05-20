@@ -62,7 +62,9 @@ def hits_to_sources(hits: List[SearchHit]) -> List[ChatSource]:
     """Map raw Qdrant hits to the public ``ChatSource`` schema.
 
     Lives at module level so the LLM-less ``/retrieve`` endpoint can reuse
-    it without depending on ChatService.
+    it without depending on ChatService. ``source_type`` and ``url`` are
+    populated when the producing connector stored them in the payload
+    (e.g. MediaWiki pages carry their wiki URL).
     """
     out: List[ChatSource] = []
     for h in hits:
@@ -77,6 +79,8 @@ def hits_to_sources(hits: List[SearchHit]) -> List[ChatSource]:
                 page=p.get("page"),
                 chunk_index=int(p.get("chunk_index", 0) or 0),
                 score=float(h.score),
+                source_type=p.get("source_type"),
+                url=p.get("url"),
             )
         )
     return out
@@ -270,7 +274,12 @@ class ChatService:
             if s.row_start is not None and s.row_end is not None:
                 parts.append(f"Zeilen {s.row_start}-{s.row_end}")
             parts.append(f"Chunk {s.chunk_index}")
-            lines.append("- " + ", ".join(parts))
+            line = "- " + ", ".join(parts)
+            # Append a wiki / connector URL when the source carries one so
+            # users can click through directly from the chat answer.
+            if s.url:
+                line = f"{line} ({s.url})"
+            lines.append(line)
         return "\n".join(lines)
 
     @staticmethod

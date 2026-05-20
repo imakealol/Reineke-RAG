@@ -1,0 +1,117 @@
+<mediawiki xmlns="http://www.mediawiki.org/xml/export-0.10/" version="0.10" xml:lang="de">
+  <siteinfo>
+    <sitename>Demo Wiki</sitename>
+    <base>https://wiki.demo.local/wiki/Hauptseite</base>
+    <generator>MediaWiki 1.40</generator>
+    <namespaces>
+      <namespace key="-2" case="first-letter">Media</namespace>
+      <namespace key="-1" case="first-letter">Special</namespace>
+      <namespace key="0" case="first-letter" />
+      <namespace key="1" case="first-letter">Diskussion</namespace>
+      <namespace key="2" case="first-letter">Benutzer</namespace>
+      <namespace key="6" case="first-letter">Datei</namespace>
+      <namespace key="10" case="first-letter">Vorlage</namespace>
+      <namespace key="14" case="first-letter">Kategorie</namespace>
+    </namespaces>
+  </siteinfo>
+  <page>
+    <title>Firewall Konzept</title>
+    <ns>0</ns>
+    <id>10</id>
+    <revision>
+      <id>101</id>
+      <timestamp>2026-01-15T09:30:00Z</timestamp>
+      <contributor><username>admin</username><id>1</id></contributor>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text bytes="500" xml:space="preserve">== Übersicht ==
+
+Unsere '''Firewall''' basiert auf [[pfSense]] und schützt das
+[https://wiki.demo.local/wiki/Verwaltungsnetz Verwaltungsnetz].
+
+== Topologie ==
+
+Der aktuelle Netzplan ist in [[Datei:Netzplan-demo.pdf|der Datei Netzplan-demo.pdf]] dokumentiert.
+
+== Regelwerk ==
+
+&lt;!-- internal todo: review Q2 2026 --&gt;
+
+[[Kategorie:IT-Sicherheit]]
+[[Kategorie:Konzepte]]
+</text>
+      <sha1>abc123</sha1>
+    </revision>
+  </page>
+  <page>
+    <title>Kennwort Richtlinie</title>
+    <ns>0</ns>
+    <id>11</id>
+    <revision>
+      <id>50</id>
+      <timestamp>2025-09-01T14:00:00Z</timestamp>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text bytes="100" xml:space="preserve">== Anforderungen ==
+
+* Mindestens 12 Zeichen
+* Verfällt nach 90 Tagen
+
+[[Kategorie:IT-Sicherheit]]</text>
+      <sha1>def456</sha1>
+    </revision>
+    <revision>
+      <id>120</id>
+      <timestamp>2026-02-10T08:00:00Z</timestamp>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text bytes="120" xml:space="preserve">== Anforderungen ==
+
+* Mindestens 14 Zeichen
+* Verfällt nach 180 Tagen
+
+Verweis auf [[Notfallhandbuch]] und [[Datei:notfallhandbuch-demo.docx]].
+
+[[Kategorie:IT-Sicherheit]]
+[[Kategorie:Compliance]]</text>
+      <sha1>def789</sha1>
+    </revision>
+  </page>
+  <page>
+    <title>FW</title>
+    <ns>0</ns>
+    <id>12</id>
+    <redirect title="Firewall Konzept" />
+    <revision>
+      <id>13</id>
+      <timestamp>2026-01-15T09:31:00Z</timestamp>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text bytes="32" xml:space="preserve">#REDIRECT [[Firewall Konzept]]</text>
+    </revision>
+  </page>
+  <page>
+    <title>Diskussion:Firewall Konzept</title>
+    <ns>1</ns>
+    <id>13</id>
+    <revision>
+      <id>14</id>
+      <timestamp>2026-01-16T10:00:00Z</timestamp>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text bytes="40" xml:space="preserve">Sollten wir das auf OPNsense umstellen?</text>
+    </revision>
+  </page>
+  <page>
+    <title>Vorlage:Hinweis</title>
+    <ns>10</ns>
+    <id>14</id>
+    <revision>
+      <id>15</id>
+      <timestamp>2025-01-01T00:00:00Z</timestamp>
+      <model>wikitext</model>
+      <format>text/x-wiki</format>
+      <text bytes="20" xml:space="preserve">&lt;div class="hinweis"&gt;{{{1}}}&lt;/div&gt;</text>
+    </revision>
+  </page>
+</mediawiki>
