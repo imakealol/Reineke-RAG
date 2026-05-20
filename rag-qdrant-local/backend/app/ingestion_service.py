@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -336,17 +336,45 @@ class IngestionService:
         document: Document,
         new_checksum: str,
     ) -> int:
-        """Load → chunk → embed → upsert. Returns chunk count."""
-        # Always wipe previous points for this document_id so re-indexing
-        # cannot leave orphaned vectors behind.
-        await asyncio.to_thread(self.store.delete_document, document.id)
+        """File-path entry point: load → delegate to ``_index_loaded_document``.
 
+        Kept thin so connectors that already hold a ``LoadedDocument`` in
+        memory (MediaWiki, future Confluence, …) can call the lower-level
+        primitive directly without round-tripping through a temp file.
+        """
         try:
             loaded: LoadedDocument = await asyncio.to_thread(load_document, file_path)
         except RequiresOCRError as exc:
+            # Wipe any prior points for this document so a previously-indexed
+            # version can't survive a status change to ``requires_ocr``.
+            await asyncio.to_thread(self.store.delete_document, document.id)
             document.status = "requires_ocr"
             document.error_message = str(exc)
             return 0
+
+        return await self._index_loaded_document(
+            document=document,
+            loaded=loaded,
+            checksum=new_checksum,
+        )
+
+    async def _index_loaded_document(
+        self,
+        *,
+        document: Document,
+        loaded: LoadedDocument,
+        checksum: str,
+        payload_extras: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """Chunk → embed → upsert for a ``LoadedDocument`` already in memory.
+
+        ``payload_extras`` is merged into every per-chunk payload so connectors
+        can attach citation fields (``url``, …) without the chunking or
+        embedding code knowing about them.
+        """
+        # Always wipe previous points for this document_id so re-indexing
+        # cannot leave orphaned vectors behind.
+        await asyncio.to_thread(self.store.delete_document, document.id)
 
         chunks: List[Chunk] = chunk_document(loaded)
         if not chunks:
@@ -354,7 +382,6 @@ class IngestionService:
             document.error_message = "No extractable content."
             return 0
 
-        # Build embeddings
         try:
             vectors = await self.ollama.embed_many([c.text for c in chunks])
         except OllamaError:
@@ -363,8 +390,8 @@ class IngestionService:
         payloads = self._build_payloads(
             document=document,
             chunks=chunks,
-            checksum=new_checksum,
-            file_path=file_path,
+            checksum=checksum,
+            payload_extras=payload_extras,
         )
 
         await asyncio.to_thread(
@@ -383,32 +410,40 @@ class IngestionService:
         document: Document,
         chunks: List[Chunk],
         checksum: str,
-        file_path: Path,
+        payload_extras: Optional[Dict[str, Any]] = None,
     ) -> List[Dict]:
-        modified_at = file_modified_iso(file_path)
+        modified_at = (
+            document.modified_at.isoformat()
+            if document.modified_at is not None
+            else utcnow_iso()
+        )
         created_at = utcnow_iso()
         out = []
         for c in chunks:
-            out.append(
-                {
-                    "text": c.text,
-                    "tenant": document.tenant,
-                    "project": document.project,
-                    "document_id": document.id,
-                    "file_name": document.file_name,
-                    "source_path": document.source_path,
-                    "file_extension": document.file_extension,
-                    "document_type": c.document_type,
-                    "page": c.page,
-                    "sheet": c.sheet,
-                    "row_start": c.row_start,
-                    "row_end": c.row_end,
-                    "chunk_index": c.chunk_index,
-                    "checksum": checksum,
-                    "modified_at": modified_at,
-                    "created_at": created_at,
-                }
-            )
+            payload: Dict[str, Any] = {
+                "text": c.text,
+                "tenant": document.tenant,
+                "project": document.project,
+                "document_id": document.id,
+                "file_name": document.file_name,
+                "source_path": document.source_path,
+                "file_extension": document.file_extension,
+                "document_type": c.document_type,
+                "page": c.page,
+                "sheet": c.sheet,
+                "row_start": c.row_start,
+                "row_end": c.row_end,
+                "chunk_index": c.chunk_index,
+                "checksum": checksum,
+                "modified_at": modified_at,
+                "created_at": created_at,
+                # ``source_type`` is always part of the payload so retrieval
+                # citations can label rows without an extra SQLite lookup.
+                "source_type": document.source_type,
+            }
+            if payload_extras:
+                payload.update(payload_extras)
+            out.append(payload)
         return out
 
     # -----------------------------------------------------------------------

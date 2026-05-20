@@ -72,6 +72,10 @@ def _apply_column_migrations() -> None:
         ("tenant_project_prompts", "rerank_enabled", "BOOLEAN"),
         ("tenant_project_prompts", "rerank_overfetch_k", "INTEGER"),
         ("tenant_project_prompts", "rerank_model", "VARCHAR(128)"),
+        # Connector support: source_type discriminates filesystem / mediawiki_*
+        # rows; source_metadata_json carries connector-specific extras.
+        ("documents", "source_type", "VARCHAR(32) NOT NULL DEFAULT 'filesystem'"),
+        ("documents", "source_metadata_json", "TEXT"),
     ]
     with engine.begin() as conn:
         for table, column, col_type in additions:

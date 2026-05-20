@@ -172,6 +172,11 @@ class ChatSource(BaseModel):
     page: Optional[int] = None
     chunk_index: int
     score: float
+    # Connector-friendly citation extras. ``filesystem`` documents leave
+    # both empty; ``mediawiki_page`` / ``mediawiki_upload`` documents fill
+    # ``url`` so the UI can render a click-through to the wiki.
+    source_type: Optional[str] = None
+    url: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
