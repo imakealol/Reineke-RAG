@@ -176,8 +176,35 @@ async def health() -> HealthResponse:
     except Exception as exc:
         qdrant_item = HealthCheckItem(ok=False, detail=str(exc))
 
+    # Reranker — soft dependency, never breaks /health by itself. Reports
+    # "disabled" / "ready (lazy)" / "loaded" so admins can tell at a glance
+    # whether the next chat request will pay the 5-15 s cold-start cost.
+    if not settings.RERANK_ENABLED:
+        reranker_item = HealthCheckItem(
+            ok=True, detail="disabled globally (RERANK_ENABLED=false)"
+        )
+    else:
+        try:
+            from . import reranker as reranker_module
+            if reranker_module.is_loaded():
+                loaded = reranker_module.loaded_model_names()
+                reranker_item = HealthCheckItem(
+                    ok=True,
+                    detail=f"loaded: {', '.join(loaded)}",
+                )
+            else:
+                reranker_item = HealthCheckItem(
+                    ok=True,
+                    detail=(
+                        f"enabled, lazy — first request will load "
+                        f"'{settings.RERANK_MODEL}' (5-15 s)"
+                    ),
+                )
+        except Exception as exc:
+            reranker_item = HealthCheckItem(ok=False, detail=str(exc))
+
     overall = all(
-        item.ok for item in (backend, ollama_item, qdrant_item, emb_item, chat_item)
+        item.ok for item in (backend, ollama_item, qdrant_item, emb_item, chat_item, reranker_item)
     )
     return HealthResponse(
         ok=overall,
@@ -186,6 +213,7 @@ async def health() -> HealthResponse:
         ollama=ollama_item,
         embedding_model=emb_item,
         chat_model=chat_item,
+        reranker=reranker_item,
     )
 
 

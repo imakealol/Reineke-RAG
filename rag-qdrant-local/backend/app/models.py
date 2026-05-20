@@ -208,6 +208,13 @@ class TenantProjectPrompt(Base):
     # ``settings.CHAT_MODEL``. Lets each agent run on a different model
     # (e.g. small fast one for FAQ, big high-quality one for legal review).
     chat_model: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    # Per-agent reranker controls. All three NULL → use the smart default
+    # (auto-enable at RERANK_AUTO_ENABLE_MIN_DOCS docs, K bucketed by
+    # doc count, global model name). Admins set these only to override the
+    # smart default for a specific collection.
+    rerank_enabled: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    rerank_overfetch_k: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    rerank_model: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )

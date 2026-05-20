@@ -1,14 +1,25 @@
-"""Retrieval = embed query → Qdrant search (tenant+project filter) → score gate."""
+"""Retrieval = embed query → Qdrant search (tenant+project filter) →
+optional cross-encoder rerank → top-K."""
 
 from __future__ import annotations
 
 import asyncio
 import re
-from typing import List, Optional
+from typing import Callable, ContextManager, List, Optional
 
+from sqlalchemy.orm import Session
+
+from . import rerank_settings as rerank_settings_module
 from .config import settings
+from .database import session_scope
 from .ollama_client import OllamaClient
 from .qdrant_store import QdrantStore, SearchHit
+from .rerank_settings import EffectiveRerankSettings
+from .utils import get_logger
+
+log = get_logger(__name__)
+
+SessionFactory = Callable[[], ContextManager[Session]]
 
 
 # ---------------------------------------------------------------------------
@@ -68,14 +79,42 @@ def _expand_query_with_synonyms(question: str) -> str:
     return f"{question} ({', '.join(additions)})"
 
 
+RerankFn = Callable[..., List[float]]
+
+
 class RetrievalService:
     def __init__(
         self,
         ollama: Optional[OllamaClient] = None,
         store: Optional[QdrantStore] = None,
+        session_factory: Optional[SessionFactory] = None,
+        rerank_fn: Optional[RerankFn] = None,
     ) -> None:
         self.ollama = ollama or OllamaClient()
         self.store = store or QdrantStore()
+        # session_factory is only needed when callers don't pass explicit
+        # ``rerank_override`` — production wires the SQLite scope, tests
+        # inject a stub or pass settings directly.
+        self.session_factory: SessionFactory = session_factory or session_scope
+        # rerank_fn defaults to the real bge-reranker singleton; tests
+        # inject a no-network stub so the import chain stays light.
+        self._rerank_fn: Optional[RerankFn] = rerank_fn
+
+    def _load_rerank_fn(self) -> RerankFn:
+        if self._rerank_fn is not None:
+            return self._rerank_fn
+        # Local import: the reranker module pulls in FlagEmbedding (heavy
+        # transitively brings torch). Deferring lets retrieval still work
+        # when the dependency isn't installed *and* reranking is disabled.
+        from . import reranker
+        self._rerank_fn = reranker.rerank
+        return self._rerank_fn
+
+    def _resolve_rerank(
+        self, *, tenant: str, project: str
+    ) -> EffectiveRerankSettings:
+        with self.session_factory() as db:
+            return rerank_settings_module.resolve(db, tenant=tenant, project=project)
 
     async def retrieve(
         self,
@@ -85,9 +124,18 @@ class RetrievalService:
         question: str,
         top_k: Optional[int] = None,
         min_score: Optional[float] = None,
+        rerank_override: Optional[EffectiveRerankSettings] = None,
     ) -> List[SearchHit]:
         k = top_k or settings.RETRIEVAL_TOP_K
         threshold = min_score if min_score is not None else settings.MIN_RETRIEVAL_SCORE
+
+        rerank_cfg = rerank_override or await asyncio.to_thread(
+            self._resolve_rerank, tenant=tenant, project=project
+        )
+
+        # Overfetch only if rerank is going to use the extra candidates —
+        # otherwise we pay for vectors we will throw away.
+        qdrant_k = max(k, rerank_cfg.overfetch_k) if rerank_cfg.enabled else k
 
         expanded = _expand_query_with_synonyms(question)
         vec = await self.ollama.embed(expanded)
@@ -97,7 +145,37 @@ class RetrievalService:
             tenant=tenant,
             project=project,
             query_vector=vec,
-            top_k=k,
+            top_k=qdrant_k,
             score_threshold=threshold,
         )
-        return hits
+
+        if not rerank_cfg.enabled or len(hits) <= 1:
+            # Reranking a single hit is a no-op; reranking zero is undefined.
+            return hits[:k]
+
+        passages = [str((h.payload or {}).get("text") or "") for h in hits]
+        try:
+            scores = await asyncio.to_thread(
+                self._load_rerank_fn(),
+                query=expanded,
+                passages=passages,
+                model_name=rerank_cfg.model,
+            )
+        except Exception as exc:
+            # Don't fail the user's query because the reranker hiccupped —
+            # log loud, fall back to bi-encoder order. The /health probe
+            # will surface the underlying issue separately.
+            log.warning(
+                "Reranker failed (%s); falling back to bi-encoder order for "
+                "tenant=%s project=%s",
+                exc, tenant, project,
+            )
+            return hits[:k]
+
+        # Replace the bi-encoder score with the reranker score so downstream
+        # display and downstream gating stay consistent with the new order.
+        rescored: List[SearchHit] = []
+        for h, s in zip(hits, scores):
+            rescored.append(SearchHit(score=float(s), payload=h.payload, point_id=h.point_id))
+        rescored.sort(key=lambda h: h.score, reverse=True)
+        return rescored[:k]

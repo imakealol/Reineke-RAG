@@ -31,6 +31,7 @@ from ..config import settings
 from ..database import SessionLocal, get_db
 from ..ingestion_service import IngestionService
 from ..models import Document, IngestionJob, IngestSchedule, RequestLog, TenantProjectPrompt
+from .. import rerank_settings as rerank_settings_module
 from ..ollama_client import OllamaClient
 from ..path_security import (
     PathSecurityError,
@@ -127,12 +128,31 @@ async def health_panel(request: Request, db: Session = Depends(get_db)) -> HTMLR
         select(func.count(func.distinct(Document.tenant + "::" + Document.project)))
     ).scalar_one()
 
+    # Reranker — soft dependency, ok=true unless actively broken.
+    if not settings.RERANK_ENABLED:
+        rerank_ok, rerank_detail = True, "deaktiviert (RERANK_ENABLED=false)"
+    else:
+        try:
+            from .. import reranker as reranker_module
+            if reranker_module.is_loaded():
+                rerank_ok = True
+                rerank_detail = "geladen: " + ", ".join(reranker_module.loaded_model_names())
+            else:
+                rerank_ok = True
+                rerank_detail = (
+                    f"aktiv, lazy — erster Aufruf lädt "
+                    f"'{settings.RERANK_MODEL}' (5–15 s)"
+                )
+        except Exception as exc:
+            rerank_ok, rerank_detail = False, f"Fehler: {exc}"
+
     items = [
         {"name": "Backend", "ok": backend_ok, "detail": "läuft"},
         {"name": "Qdrant", "ok": qdrant_ok, "detail": qdrant_detail},
         {"name": "Ollama", "ok": ollama_ok, "detail": ollama_detail},
         {"name": "Embedding-Modell", "ok": emb_ok, "detail": emb_detail},
         {"name": "Chat-Modell", "ok": chat_ok, "detail": chat_detail},
+        {"name": "Reranker", "ok": rerank_ok, "detail": rerank_detail},
     ]
 
     return templates.TemplateResponse(
@@ -168,24 +188,35 @@ async def tenants_panel(request: Request, db: Session = Depends(get_db)) -> HTML
 
     # Pre-fetch persona prompts + per-agent chat models so we don't hammer
     # the DB inside the template.
-    config_map: Dict[Tuple[str, str], Dict[str, str]] = {}
+    config_map: Dict[Tuple[str, str], TenantProjectPrompt] = {}
     for p in db.execute(select(TenantProjectPrompt)).scalars().all():
-        config_map[(p.tenant, p.project)] = {
-            "persona_prompt": p.persona_prompt or "",
-            "chat_model": p.chat_model or "",
-        }
+        config_map[(p.tenant, p.project)] = p
 
     tree: Dict[str, List[Dict[str, Any]]] = {}
     for tenant, project, docs, chunks, last_updated in rows:
-        agent_cfg = config_map.get((tenant, project), {})
+        row = config_map.get((tenant, project))
+        # Resolve effective rerank settings so the form shows the current
+        # truth — auto/on/off, plus the smart-default explanation.
+        effective = rerank_settings_module.resolve(db, tenant=tenant, project=project)
+        # Tri-state for the dropdown: "auto" means no override (NULL in DB).
+        rerank_choice = "auto"
+        if row is not None and row.rerank_enabled is True:
+            rerank_choice = "on"
+        elif row is not None and row.rerank_enabled is False:
+            rerank_choice = "off"
         tree.setdefault(tenant, []).append(
             {
                 "project": project,
                 "docs": docs,
                 "chunks": chunks,
                 "last_updated": last_updated,
-                "persona_prompt": agent_cfg.get("persona_prompt", ""),
-                "chat_model": agent_cfg.get("chat_model", ""),
+                "persona_prompt": (row.persona_prompt or "") if row else "",
+                "chat_model": (row.chat_model or "") if row else "",
+                "rerank_choice": rerank_choice,
+                "rerank_overfetch_k_override": (
+                    row.rerank_overfetch_k if row and row.rerank_overfetch_k else None
+                ),
+                "rerank_effective": effective,
             }
         )
 
@@ -1243,3 +1274,64 @@ async def agent_chat_model_set(
             f'Default <code>{settings.CHAT_MODEL}</code>.</div>'
         )
     return HTMLResponse(msg)
+
+
+@router.post("/agents/{tenant}/{project}/rerank", response_class=HTMLResponse)
+async def agent_rerank_set(
+    tenant: str, project: str, request: Request, db: Session = Depends(get_db)
+) -> HTMLResponse:
+    """Set or clear the per-collection reranker controls.
+
+    Form fields:
+      rerank_enabled       — "auto" | "on" | "off"
+                             "auto" stores NULL (use the smart default).
+      rerank_overfetch_k   — positive int or empty
+                             empty stores NULL (use the smart default).
+    """
+    form = await request.form()
+    raw_enabled = (form.get("rerank_enabled") or "auto").strip().lower()
+    raw_k = (form.get("rerank_overfetch_k") or "").strip()
+
+    if raw_enabled not in {"auto", "on", "off"}:
+        return HTMLResponse(
+            '<div class="alert alert-danger py-1 m-0 small">'
+            'Ungültige Auswahl für Reranking.</div>'
+        )
+
+    overfetch_k: Optional[int] = None
+    if raw_k:
+        try:
+            overfetch_k = int(raw_k)
+        except ValueError:
+            return HTMLResponse(
+                '<div class="alert alert-danger py-1 m-0 small">'
+                'Overfetch-K muss eine ganze Zahl sein.</div>'
+            )
+        if not 1 <= overfetch_k <= 500:
+            return HTMLResponse(
+                '<div class="alert alert-danger py-1 m-0 small">'
+                'Overfetch-K muss zwischen 1 und 500 liegen.</div>'
+            )
+
+    row = db.get(TenantProjectPrompt, (tenant, project))
+    if row is None:
+        row = TenantProjectPrompt(tenant=tenant, project=project, persona_prompt="")
+        db.add(row)
+
+    if raw_enabled == "auto":
+        row.rerank_enabled = None
+    elif raw_enabled == "on":
+        row.rerank_enabled = True
+    else:
+        row.rerank_enabled = False
+    row.rerank_overfetch_k = overfetch_k
+    db.commit()
+
+    effective = rerank_settings_module.resolve(db, tenant=tenant, project=project)
+    state = "aktiv" if effective.enabled else "inaktiv"
+    return HTMLResponse(
+        f'<div class="alert alert-success py-1 m-0 small">'
+        f'Reranking: <strong>{state}</strong>, K={effective.overfetch_k} '
+        f'(Status: {effective.enabled_source}, K-Quelle: '
+        f'{effective.overfetch_k_source}).</div>'
+    )

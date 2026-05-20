@@ -61,6 +61,23 @@ class Settings(BaseSettings):
     RETRIEVAL_TOP_K: int = 6
     MIN_RETRIEVAL_SCORE: float = 0.35
 
+    # Reranker (cross-encoder, runs after the bi-encoder Qdrant search).
+    # RERANK_ENABLED is a global killswitch: false = reranker is never
+    # invoked, regardless of per-collection settings. Set true on the
+    # appliance and let the smart default ("auto-enable when collection
+    # has ≥ RERANK_AUTO_ENABLE_MIN_DOCS docs") plus per-collection
+    # overrides decide who actually gets reranked.
+    RERANK_ENABLED: bool = True
+    RERANK_MODEL: str = "BAAI/bge-reranker-v2-m3"
+    # Overfetch candidates from Qdrant for the reranker to reorder. Used
+    # as a hard floor when the per-collection smart default would pick a
+    # smaller value. Higher = more recall, more reranker work per query.
+    RERANK_OVERFETCH_K: int = 20
+    # Smart-default threshold: collections below this many indexed docs
+    # don't auto-enable reranking (the lift is small, the latency cost
+    # is the same). Admins can still flip it on per-collection.
+    RERANK_AUTO_ENABLE_MIN_DOCS: int = 100
+
     # Generation
     CHAT_TEMPERATURE: float = 0.1
     CHAT_MAX_TOKENS: int = 1024
