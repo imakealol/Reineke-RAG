@@ -22,6 +22,16 @@ class OllamaError(RuntimeError):
     pass
 
 
+# Per-model context length, populated lazily from /api/show. Cached at module
+# level because OllamaClient instances are short-lived (per request) but the
+# model's context length is invariant once the model file is loaded.
+_CTX_CACHE: Dict[str, int] = {}
+
+# Ollama's compiled-in default when the model file doesn't pin one explicitly.
+# Used as a last resort so we never crash on weird/unknown models.
+_OLLAMA_DEFAULT_NUM_CTX = 2048
+
+
 class OllamaClient:
     def __init__(
         self,
@@ -127,6 +137,62 @@ class OllamaClient:
             out.append(await self.embed(t, model=model))
         return out
 
+    async def get_context_length(self, model: Optional[str] = None) -> int:
+        """Return the model's declared max context window from /api/show.
+
+        Ollama's chat API otherwise silently truncates messages to its
+        compiled-in default (2048 tokens), which quietly drops the system
+        prompt + early history of any non-trivial RAG conversation. We resolve
+        and cache the model's *real* max once per process so the value can
+        flow into ``chat()``'s ``num_ctx`` option.
+
+        Resolution order, biggest-fits-first:
+          1. ``model_info["<arch>.context_length"]`` — exact value
+          2. ``parameters`` text contains ``num_ctx`` — pinned via Modelfile
+          3. ``_OLLAMA_DEFAULT_NUM_CTX`` fallback
+
+        Cached by model name; safe to call repeatedly. Errors fall through to
+        the default so a missing model doesn't break chat.
+        """
+        name = model or settings.CHAT_MODEL
+        if name in _CTX_CACHE:
+            return _CTX_CACHE[name]
+        try:
+            resp = await self._request("POST", "/api/show", json={"name": name})
+            data = resp.json()
+        except OllamaError as exc:
+            log.warning(
+                "Could not query /api/show for %s (%s); falling back to %d",
+                name, exc, _OLLAMA_DEFAULT_NUM_CTX,
+            )
+            _CTX_CACHE[name] = _OLLAMA_DEFAULT_NUM_CTX
+            return _OLLAMA_DEFAULT_NUM_CTX
+
+        info = data.get("model_info") or {}
+        # Architecture-prefixed keys: qwen2.context_length, llama.context_length, ...
+        candidates = [
+            int(v) for k, v in info.items()
+            if k.endswith(".context_length") and isinstance(v, (int, float))
+        ]
+        if candidates:
+            ctx = max(candidates)
+        else:
+            # Parse the parameters text — looks like "num_ctx                 8192"
+            ctx = _OLLAMA_DEFAULT_NUM_CTX
+            params_text = data.get("parameters", "") or ""
+            for line in params_text.splitlines():
+                parts = line.strip().split()
+                if len(parts) >= 2 and parts[0] == "num_ctx":
+                    try:
+                        ctx = int(parts[1])
+                        break
+                    except ValueError:
+                        pass
+
+        _CTX_CACHE[name] = ctx
+        log.info("Resolved num_ctx=%d for model=%s (from /api/show)", ctx, name)
+        return ctx
+
     async def chat(
         self,
         messages: List[Dict[str, str]],
@@ -135,8 +201,14 @@ class OllamaClient:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
     ) -> str:
+        chat_model = model or settings.CHAT_MODEL
+        # Resolve num_ctx: env override wins, else detect from /api/show.
+        if settings.OLLAMA_NUM_CTX is not None:
+            num_ctx = settings.OLLAMA_NUM_CTX
+        else:
+            num_ctx = await self.get_context_length(chat_model)
         body: Dict[str, Any] = {
-            "model": model or settings.CHAT_MODEL,
+            "model": chat_model,
             "messages": messages,
             "stream": False,
             "keep_alive": settings.OLLAMA_KEEP_ALIVE,
@@ -147,6 +219,7 @@ class OllamaClient:
                 "num_predict": (
                     max_tokens if max_tokens is not None else settings.CHAT_MAX_TOKENS
                 ),
+                "num_ctx": num_ctx,
             },
         }
         resp = await self._request("POST", "/api/chat", json=body)
