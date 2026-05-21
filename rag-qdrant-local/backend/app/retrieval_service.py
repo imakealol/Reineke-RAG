@@ -180,6 +180,19 @@ REWRITE_SYSTEM_PROMPT = (
     "• Wenn die Frage ein neues Thema öffnet (Themenwechsel weg vom "
     "bisherigen Gespräch), gib sie UNVERÄNDERT zurück — füge keine "
     "Themen aus der Konversation hinzu.\n"
+    "• Wenn die Frage sich auf die Konversation selbst bezieht "
+    "(z.B. 'Erinnerst du dich an meine erste Frage?', 'Was haben wir "
+    "vorhin besprochen?', 'Fass die letzten drei Antworten zusammen'), "
+    "gib sie UNVERÄNDERT zurück — solche Meta-Fragen dürfen NICHT in "
+    "inhaltliche Fragen umformuliert werden.\n"
+    "• Bei Ordinal-Bezügen ('die zuerst genannte', 'die zweite Richtlinie', "
+    "'alle außer der ersten') versuche das gemeinte Element konkret zu "
+    "benennen. Wenn unklar bleibt, welches Element gemeint ist, gib die "
+    "Frage UNVERÄNDERT zurück. Niemals einfach eine frühere Frage als "
+    "Rewrite einer aktuellen Frage zurückgeben.\n"
+    "• Verwende NIEMALS Platzhalter-Token wie '[Quelle 1]', '(Quelle 2)' "
+    "oder Markdown-Marker aus früheren Antworten — die umformulierte "
+    "Frage muss eigenständig stehen und nur normale Wörter enthalten.\n"
     "• Antworte in der Sprache der aktuellen Frage.\n"
     "• Antworte nur mit der Frage selbst — keine Erklärung, keine "
     "Anführungszeichen, kein Präfix wie 'Umformulierte Frage:'."
@@ -189,23 +202,78 @@ REWRITE_SYSTEM_PROMPT = (
 # for pronoun resolution and short enough that the rewriter doesn't try to
 # stitch unrelated older topics into the rewrite.
 _REWRITE_HISTORY_TURNS = 2
+
+# Conversation-meta questions ("erinnerst du dich an meine erste Frage?",
+# "fasse die letzten Antworten zusammen") are about the chat itself, not
+# the corpus. The rewriter prompt forbids rewriting them, but smaller
+# models (qwen2.5:7b in particular) tend to ignore that rule and produce
+# a content-flavoured rewrite anyway. Catching them with a regex before
+# the LLM call is the deterministic fix; the model never gets a chance
+# to misinterpret.
+_META_CONVERSATION_QUESTION_RE = re.compile(
+    r"\b("
+    r"erinnerst\s+du\s+dich"
+    r"|erinnere?\s+(mich|dich)\s+(an|daran)"
+    # German: was/welche + war/waren + (meine|meiner) + ordinal + frage(n)/nachricht(en)
+    r"|was\s+(war|waren)\s+meine[rn]?\s+"
+    r"(erste[rn]?|letzte[rn]?|vorherige[rn]?|allererste[rn]?)\s+"
+    r"(frage[n]?|nachricht[en]?)"
+    r"|welche\s+(war|waren)\s+meine[rn]?\s+"
+    r"(erste[rn]?|letzte[rn]?|vorherige[rn]?|allererste[rn]?)"
+    r"|wiederhole\b"
+    r"|fasse?\s+(die\s+)?(letzten?|vorherigen?)\s+(antworten?|fragen?|turns?)"
+    r"|do\s+you\s+remember"
+    r"|what\s+(was|were)\s+my\s+(first|last|previous|earlier)\b"
+    r"|summari[sz]e\s+(the\s+)?(previous|last|earlier)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _is_conversation_meta_question(question: str) -> bool:
+    """True for questions *about* the chat (history recall, summary
+    requests), as opposed to questions *with* a reference into the
+    chat. The former must not be rewritten."""
+    return _META_CONVERSATION_QUESTION_RE.search(question or "") is not None
 # Cap on rewriter output. Rewrites should be one short sentence; if the
 # model goes long we treat it as nonsense and fall back to the original.
 _REWRITE_MAX_TOKENS = 200
 _REWRITE_MAX_OUTPUT_CHARS = 600
 
-# Strip the LLM's deterministic "Quellen:" trailer (plus everything after)
-# from any assistant message before showing it to the rewriter — prevents
-# the rewriter from echoing cited filenames into the rewrite, which would
-# bias retrieval toward already-cited documents.
+# Strip two flavours of source-related noise from assistant messages
+# before showing them to the rewriter:
+#
+#   1. The "Quellen:" trailer block at the end of the message (and
+#      everything after it).
+#   2. Inline source markers like "[Quelle 1]", "(Quelle 1, 2)",
+#      "[Quellen 3 und 4]" that the LLM scatters through its prose.
+#      Without stripping these, the rewriter regularly echoes the
+#      bracketed token into the rewrite — observed live as
+#      "...empfohlen in der Richtlinie [Quelle 1]?" — which is junk for
+#      the embedder and biases retrieval toward already-cited chunks.
 _QUELLEN_TRAILER_FOR_REWRITE_RE = re.compile(
     r"\n[ \t]*(?:[*_#]+[ \t]*)?Quellen:.*", re.DOTALL,
+)
+# Match e.g. "[Quelle 1]", "(Quelle 1, 2)", "[Quellen 1 und 4]",
+# "[Quelle 1, Seite 4]". Anchored to bracket pairs so plain text
+# like "Quelle 1: foo.pdf" (a list item) or "Quelle dieses Dokuments"
+# stays untouched. Requires at least one digit between brackets.
+_INLINE_QUELLE_MARKER_RE = re.compile(
+    r"[\[\(]\s*Quellen?\b[^\[\]\(\)]*\d+[^\[\]\(\)]*[\]\)]"
 )
 
 
 def _strip_quellen_for_rewrite(content: str) -> str:
+    """Remove both trailer block and inline `[Quelle N]` markers."""
     m = _QUELLEN_TRAILER_FOR_REWRITE_RE.search(content)
-    return content[: m.start()].rstrip() if m else content
+    if m:
+        content = content[: m.start()]
+    # Strip inline markers in whatever's left. Replace with a single
+    # space to keep word boundaries clean ("X [Quelle 1] Y" → "X  Y").
+    content = _INLINE_QUELLE_MARKER_RE.sub(" ", content)
+    # Collapse the double-spaces our substitution might create.
+    content = re.sub(r"[ \t]{2,}", " ", content)
+    return content.rstrip()
 
 
 def _trim_history_for_rewrite(
@@ -246,7 +314,13 @@ def _format_rewrite_user_prompt(
 
 def _clean_rewriter_output(raw: str) -> str:
     """Trim quotes, whitespace, and obvious wrapper junk from rewriter
-    output. Empty result signals to the caller to use the original."""
+    output. Empty result signals to the caller to use the original.
+
+    Also returns empty when the output contains a `[Quelle N]`-style
+    inline marker — even with the prompt forbidding them, smaller
+    models occasionally leak the bracketed token through. Better to
+    fall back to the original question than to embed garbage.
+    """
     if not raw:
         return ""
     s = raw.strip()
@@ -264,6 +338,11 @@ def _clean_rewriter_output(raw: str) -> str:
         if s.lower().startswith(prefix.lower()):
             s = s[len(prefix):].strip()
             break
+    # Reject obvious garbage: a leaked source marker means the rewriter
+    # is echoing from the assistant's prior answer rather than producing
+    # a clean standalone question.
+    if _INLINE_QUELLE_MARKER_RE.search(s):
+        return ""
     return s
 
 
@@ -320,6 +399,14 @@ class RetrievalService:
             return question
         trimmed = _trim_history_for_rewrite(history)
         if not trimmed:
+            return question
+        # Conversation-meta questions get passed through deterministically.
+        # The rewriter prompt forbids rewriting them, but smaller models
+        # often ignore the rule and "helpfully" turn them into content
+        # questions. The regex catches the common phrasings before the
+        # model has a chance to mis-fire.
+        if _is_conversation_meta_question(question):
+            log.info("Skipping rewrite for conversation-meta question: %r", question)
             return question
         model = (settings.REWRITE_MODEL or "").strip() or None  # None = CHAT_MODEL
         messages = [

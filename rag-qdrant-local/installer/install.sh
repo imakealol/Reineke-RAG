@@ -203,6 +203,13 @@ step "6/8 · KI-Modelle laden"
 
 EMBEDDING_MODEL="$(grep -E '^EMBEDDING_MODEL=' "$INSTALL_DIR/.env" | cut -d= -f2-)"
 CHAT_MODEL="$(grep -E '^CHAT_MODEL=' "$INSTALL_DIR/.env" | cut -d= -f2-)"
+# Query-rewriter model (small LLM used to resolve follow-up references
+# before retrieval). Empty value = reuse CHAT_MODEL — nothing extra to
+# pull. Defaults to qwen2.5:7b when unset in .env so the rewriter has
+# a fast small model to lean on out of the box.
+REWRITE_MODEL="$(grep -E '^REWRITE_MODEL=' "$INSTALL_DIR/.env" | cut -d= -f2-)"
+REWRITE_MODEL_DEFAULT="qwen2.5:7b"
+REWRITE_MODEL="${REWRITE_MODEL:-$REWRITE_MODEL_DEFAULT}"
 
 if [[ -d "$BUNDLE_DIR/models" ]] && [[ -n "$(ls -A "$BUNDLE_DIR/models")" ]]; then
   log "    offline-Modell-Blobs gefunden → kopiere nach Ollama-Volume"
@@ -221,11 +228,19 @@ else
   if [[ $SKIP_OLLAMA -eq 0 ]]; then
     run docker compose exec -T ollama ollama pull "$EMBEDDING_MODEL"
     run docker compose exec -T ollama ollama pull "$CHAT_MODEL"
+    # Pull rewriter model only when distinct from CHAT_MODEL —
+    # otherwise it's already on disk.
+    if [[ -n "$REWRITE_MODEL" && "$REWRITE_MODEL" != "$CHAT_MODEL" ]]; then
+      run docker compose exec -T ollama ollama pull "$REWRITE_MODEL"
+    fi
   else
     run ollama pull "$EMBEDDING_MODEL"
     run ollama pull "$CHAT_MODEL"
+    if [[ -n "$REWRITE_MODEL" && "$REWRITE_MODEL" != "$CHAT_MODEL" ]]; then
+      run ollama pull "$REWRITE_MODEL"
+    fi
   fi
-  ok "Modelle gepullt: $EMBEDDING_MODEL, $CHAT_MODEL"
+  ok "Modelle gepullt: $EMBEDDING_MODEL, $CHAT_MODEL${REWRITE_MODEL:+, $REWRITE_MODEL (rewriter)}"
 fi
 
 # ---------------------------------------------------------------------------

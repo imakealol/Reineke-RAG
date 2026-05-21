@@ -99,12 +99,13 @@ class Settings(BaseSettings):
     # you cited" from six bare words. Off-by-default until proven safe;
     # see docs/QUERY_REWRITER.md for the design notes.
     ENABLE_QUERY_REWRITE: bool = True
-    # Model used for the rewrite step. Empty string = "use CHAT_MODEL"
-    # (zero extra RAM, but the rewrite runs at chat-model speed). Set to
-    # a smaller model like "qwen2.5:7b" or "qwen2.5:3b" to cut the
-    # rewrite latency to <1s — recommended on hardware that can keep
-    # both models warm via OLLAMA_KEEP_ALIVE.
-    REWRITE_MODEL: str = ""
+    # Model used for the rewrite step. Default qwen2.5:7b cuts the
+    # per-follow-up latency to ~0.5-1.5s on GPU vs ~5-15s with a 32B
+    # chat model, while still being big enough for clean pronoun
+    # resolution in DE/EN. Empty string = reuse CHAT_MODEL (use this
+    # when you don't want to keep a second model warm). Override per
+    # deployment via .env or the /admin overlay.
+    REWRITE_MODEL: str = "qwen2.5:7b"
 
     # LibreOffice binary
     SOFFICE_BIN: str = "soffice"
