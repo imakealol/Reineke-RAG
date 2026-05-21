@@ -13,19 +13,57 @@ generating, which keeps the connection pool usable under concurrent load.
 from __future__ import annotations
 
 import json
+import re
 from typing import Callable, ContextManager, Dict, List, Optional
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import session_scope
-from .models import ChatMessage, ChatSession, TenantProjectPrompt
+from .models import ChatMessage, ChatSession, Document, TenantProjectPrompt
 from .ollama_client import OllamaClient
 from .qdrant_store import SearchHit
 from .retrieval_service import RetrievalService
 from .schemas import ChatResponse, ChatSource
-from .utils import new_id
+from .utils import deterministic_uuid, new_id
+
+# ---------------------------------------------------------------------------
+# Cross-turn citation recall
+# ---------------------------------------------------------------------------
+# When the user says "the other one you cited" or "and what about that
+# document from before", we want the previously-cited chunks back in the
+# retrieval candidate pool so the reranker can promote them if still
+# relevant. Without this, the fresh-query embedding has no link to past
+# context and the right document gets nowhere near top-K.
+#
+# Tunables, hand-picked rather than configured: 3 turns × 3 chunks max
+# bounds the extra pool at 9 candidates, which combined with qdrant_k=12
+# fits comfortably under any reasonable reranker batch size. Promote to
+# config if a real corpus shows a need to tune.
+_CROSS_TURN_RECALL_TURNS = 3
+_CROSS_TURN_RECALL_PER_TURN = 3
+
+# Matches an LLM-emitted "Quellen:" trailer that starts its own line. We
+# replace it with our deterministic block so the user never sees fabricated
+# citations even when the model decided to write its own list. Inline
+# mentions ("siehe die Quellen:") aren't matched because they lack the
+# trailing newline.
+_LLM_SOURCES_TRAILER_RE = re.compile(r"\n[ \t]*Quellen:[ \t]*\n")
+
+# Corpus-meta questions like "wie viele Dokumente hast du?" do not map onto
+# the retrieval pipeline — the LLM hallucinates a count from whatever top-K
+# chunks came back. We detect a narrow, high-precision pattern and short-
+# circuit to a real count from SQLite instead. Kept short and strict so we
+# don't accidentally intercept a real content question like "Welche
+# Anweisungen gibt es, wie viele Backups man behalten muss?".
+_META_COUNT_RE = re.compile(
+    r"\b(?:wie\s*viele?|wieviel(?:e)?|anzahl(?:\s+(?:der|von))?|"
+    r"how\s+many|count\s+of)\b[^?]{0,40}\b(?:dokumente?|dateien?|files?|"
+    r"documents?|protokolle?|versuche?)\b",
+    re.IGNORECASE,
+)
+_META_COUNT_MAX_LEN = 80
 
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -193,6 +231,100 @@ class ChatService:
         rows.reverse()
         return [{"role": r.role, "content": r.content} for r in rows]
 
+    # ----- meta-question deflection ---------------------------------------
+
+    @staticmethod
+    def _is_meta_count_question(question: str) -> bool:
+        """True iff the question reads like 'how many documents do you hold?'.
+
+        Length-capped on purpose — anything longer is almost certainly a real
+        content question that just happens to mention 'wie viele Dokumente'.
+        """
+        q = (question or "").strip()
+        if not q or len(q) > _META_COUNT_MAX_LEN:
+            return False
+        return _META_COUNT_RE.search(q) is not None
+
+    def _meta_count_answer(self, tenant: str, project: str) -> str:
+        """Build the canned 'I won't guess, here's the real count' reply."""
+        with self.session_factory() as db:
+            count = (
+                db.execute(
+                    select(func.count(Document.id)).where(
+                        Document.tenant == tenant,
+                        Document.project == project,
+                    )
+                ).scalar()
+                or 0
+            )
+        return (
+            f"Im aktuellen Bereich (Tenant: {tenant}, Projekt: {project}) "
+            f"sind aktuell {count} Dokumente indiziert.\n\n"
+            f"Stelle mir inhaltliche Fragen zu diesen Dokumenten — ich "
+            f"suche dann gezielt die passenden Stellen heraus. Eine "
+            f"vollständige Liste aller Dateien siehst du im Admin-Bereich "
+            f"unter Dokumente."
+        )
+
+    def _load_recent_citation_ids(
+        self,
+        session_id: str,
+        *,
+        turns: int = _CROSS_TURN_RECALL_TURNS,
+        per_turn: int = _CROSS_TURN_RECALL_PER_TURN,
+    ) -> List[str]:
+        """Collect Qdrant point IDs cited by recent assistant messages.
+
+        Walks the last ``turns`` assistant messages of this session, parses
+        each one's ``sources_json`` and reconstructs the Qdrant point id
+        from ``(document_id, chunk_index)`` using the same scheme as
+        ingestion. Returns deduplicated ids, newest-first. Messages with
+        broken/missing sources are skipped silently — we never fail a chat
+        request because an old session row has a quirky payload.
+        """
+        if turns <= 0 or per_turn <= 0:
+            return []
+        with self.session_factory() as db:
+            rows = list(
+                db.execute(
+                    select(ChatMessage)
+                    .where(
+                        ChatMessage.session_id == session_id,
+                        ChatMessage.role == "assistant",
+                    )
+                    .order_by(desc(ChatMessage.created_at))
+                    .limit(turns)
+                ).scalars().all()
+            )
+        ids: List[str] = []
+        seen: set[str] = set()
+        for row in rows:
+            if not row.sources_json:
+                continue
+            try:
+                items = json.loads(row.sources_json)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(items, list):
+                continue
+            count = 0
+            for item in items:
+                if count >= per_turn:
+                    break
+                if not isinstance(item, dict):
+                    continue
+                document_id = str(item.get("document_id") or "")
+                chunk_index = item.get("chunk_index")
+                if not document_id or chunk_index is None:
+                    continue
+                pid = deterministic_uuid(document_id, str(chunk_index))
+                if pid in seen:
+                    continue
+                seen.add(pid)
+                ids.append(pid)
+                count += 1
+        return ids
+
     # ----- DB phase C: append the two messages -----------------------------
 
     def _persist_messages(
@@ -283,12 +415,29 @@ class ChatService:
         return "\n".join(lines)
 
     @staticmethod
+    def _strip_llm_sources_trailer(answer: str) -> str:
+        """Drop any ``Quellen:``-prefixed block the LLM tacked onto the answer.
+
+        The LLM occasionally invents citation lines that don't match what we
+        actually retrieved (wrong filename, wrong page, wrong "Quelle N:"
+        index). We strip it so the deterministic block from
+        ``_format_sources_block`` is always the final word. Only the
+        trailing block at start-of-line is matched; inline references to
+        "Quellen" stay intact.
+        """
+        m = _LLM_SOURCES_TRAILER_RE.search(answer)
+        if m is None:
+            return answer
+        return answer[: m.start()].rstrip()
+
+    @staticmethod
     def _ensure_sources_appended(answer: str, sources_block: str) -> str:
         if not sources_block:
             return answer
-        if "Quellen:" in answer:
-            return answer
-        return f"{answer.rstrip()}\n\n{sources_block}"
+        # Always append our deterministic block, even if the LLM wrote one.
+        # The LLM's version can be wrong; ours is always tied to actual hits.
+        cleaned = ChatService._strip_llm_sources_trailer(answer)
+        return f"{cleaned.rstrip()}\n\n{sources_block}"
 
     # ----- main entry point ------------------------------------------------
 
@@ -306,12 +455,36 @@ class ChatService:
             tenant=tenant, project=project, session_id=session_id
         )
 
+        # Meta-question short-circuit: "wie viele Dokumente hast du?" has
+        # no honest answer via retrieval — we'd hand the LLM whatever 6
+        # random chunks Qdrant returns and it would invent a number. Real
+        # count from SQLite is the right answer.
+        if self._is_meta_count_question(question):
+            answer = self._meta_count_answer(tenant, project)
+            self._persist_messages(
+                session_id=resolved_session_id,
+                question=question,
+                answer=answer,
+                sources=[],
+            )
+            return ChatResponse(
+                answer=answer, sources=[], session_id=resolved_session_id
+            )
+
+        # Cross-turn recall: chunk ids cited in this session's recent
+        # assistant messages. The retrieval pipeline folds them into the
+        # candidate pool so structurally-referential follow-ups ("the other
+        # one you cited") find their target even though the new question
+        # doesn't embed near it.
+        past_citation_ids = self._load_recent_citation_ids(resolved_session_id)
+
         # Phase B — no DB held during this part
         hits = await self.retrieval.retrieve(
             tenant=tenant,
             project=project,
             question=question,
             top_k=top_k,
+            past_citation_ids=past_citation_ids,
         )
 
         if not hits:
