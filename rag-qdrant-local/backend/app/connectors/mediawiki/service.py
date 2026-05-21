@@ -32,10 +32,12 @@ from urllib.parse import quote
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+# select is also used below for the IngestionJob lookup.
+
 from ...chunker import Chunk  # noqa: F401  — re-exported usage clarity
 from ...document_loader import LoadedDocument, LoadedSegment
 from ...ingestion_service import IngestionService
-from ...models import Document
+from ...models import Document, IngestionJob
 from ...path_security import assert_existing_dir, resolve_safe_path
 from ...source_scanner import SUPPORTED_EXTENSIONS
 from ...utils import get_logger, new_id, sha256_file
@@ -165,9 +167,25 @@ class MediaWikiImportService:
         include_uploads: bool,
         reindex_changed_only: bool,
         dry_run: bool,
+        job_id: Optional[str] = None,
     ) -> ImportResult:
-        """Top-level entry point for ``POST /sources/mediawiki/import-xml``."""
+        """Top-level entry point for ``POST /sources/mediawiki/import-xml``.
+
+        When ``job_id`` is supplied, the corresponding :class:`IngestionJob`
+        is loaded and updated as pages / uploads progress — the existing
+        admin live-progress UI then works for wiki imports too. The
+        bookkeeping fields are mapped from wiki to file shape:
+        ``files_found = pages_total + uploads_total``,
+        ``files_indexed = pages_indexed + uploads_indexed``,
+        ``files_skipped`` aggregates every skip reason,
+        ``current_file`` shows the page title / upload filename in flight.
+        """
         result = ImportResult()
+        job: Optional[IngestionJob] = None
+        if job_id is not None:
+            job = db.execute(
+                select(IngestionJob).where(IngestionJob.id == job_id)
+            ).scalar_one_or_none()
 
         # ---- path validation ------------------------------------------------
         safe_xml = resolve_safe_path(xml_path)
@@ -197,6 +215,16 @@ class MediaWikiImportService:
         if not dry_run:
             await self.ingestion._ensure_collection_for_model()
 
+        # ---- pre-count pages so the progress bar has a denominator. Cheap
+        # ---- compared to the per-page chunk+embed+upsert below.
+        if job is not None and not dry_run:
+            try:
+                total_pages = sum(1 for _ in iter_pages(safe_xml))
+            except Exception:
+                total_pages = 0
+            job.files_found = total_pages
+            db.commit()
+
         # ---- pages: pass 1 — filter, normalize, ingest, collect file refs --
         # We track file refs across pages because the *same* upload may be
         # referenced by many pages; the ingest happens once and the
@@ -205,12 +233,17 @@ class MediaWikiImportService:
 
         for page in iter_pages(safe_xml):
             result.pages_seen += 1
+            if job is not None:
+                job.current_file = page.title
+                db.commit()
 
             if page.namespace_id not in allowed_ns:
                 result.pages_skipped_namespace += 1
+                self._update_job_counters(db, job, result)
                 continue
             if page.is_redirect and not include_redirects:
                 result.pages_skipped_redirect += 1
+                self._update_job_counters(db, job, result)
                 continue
 
             normalised = normalize_wikitext(page.raw_text)
@@ -251,10 +284,19 @@ class MediaWikiImportService:
                 result.errors.append(
                     f"page '{page.title}' (id={page.page_id}): {exc}"
                 )
+            self._update_job_counters(db, job, result)
 
         # ---- pass 2 — uploads (if requested + uploads_path set) ------------
         if file_refs and safe_uploads is not None:
+            # Now that we know how many uploads there are, lift the total
+            # so the progress bar can reach 100 instead of capping early.
+            if job is not None and not dry_run:
+                job.files_found = (job.files_found or 0) + len(file_refs)
+                db.commit()
             for bare_filename, agg in file_refs.items():
+                if job is not None:
+                    job.current_file = bare_filename
+                    db.commit()
                 result.files_seen += 1
                 resolved = resolve_upload(safe_uploads, bare_filename)
                 if not resolved.exists:
@@ -290,8 +332,34 @@ class MediaWikiImportService:
                     result.errors.append(
                         f"upload '{bare_filename}': {exc}"
                     )
+                self._update_job_counters(db, job, result)
 
+        if job is not None:
+            job.current_file = None
+            db.commit()
         return result
+
+    @staticmethod
+    def _update_job_counters(
+        db: Session,
+        job: Optional[IngestionJob],
+        result: "ImportResult",
+    ) -> None:
+        """Map the wiki-specific counters onto the file-shaped columns the
+        progress UI already understands. Called after each unit so the
+        bar advances visibly during long imports."""
+        if job is None:
+            return
+        job.files_indexed = result.pages_indexed + result.files_indexed
+        job.files_skipped = (
+            result.pages_skipped_namespace
+            + result.pages_skipped_redirect
+            + result.pages_skipped_unchanged
+            + result.files_skipped_unsupported
+            + result.files_skipped_unchanged
+        )
+        job.files_failed = result.pages_failed + len(result.errors)
+        db.commit()
 
     # -----------------------------------------------------------------------
 

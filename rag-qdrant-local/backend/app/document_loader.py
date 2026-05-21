@@ -14,6 +14,7 @@ from typing import List, Optional
 from .office_converter import (
     OfficeConversionError,
     convert_doc_to_docx,
+    convert_odt_to_docx,
     convert_xls_to_xlsx,
 )
 from .utils import get_logger
@@ -399,6 +400,86 @@ def _load_html(path: Path) -> List[LoadedSegment]:
 
 
 # ---------------------------------------------------------------------------
+# PPTX
+# ---------------------------------------------------------------------------
+
+def _load_pptx(path: Path) -> List[LoadedSegment]:
+    """Extract text per slide from a PowerPoint file.
+
+    Each slide becomes one LoadedSegment with ``page`` set to the slide
+    number — same shape as PDF, so retrieval citations read naturally.
+    Notes pane (presenter notes) is included for the slide if present.
+    """
+    try:
+        from pptx import Presentation
+    except ImportError as exc:  # pragma: no cover
+        raise DocumentLoadError(
+            "python-pptx is not installed — add to requirements.txt."
+        ) from exc
+
+    try:
+        prs = Presentation(str(path))
+    except Exception as exc:
+        raise DocumentLoadError(f"Could not open PPTX: {exc}") from exc
+
+    segments: List[LoadedSegment] = []
+    for i, slide in enumerate(prs.slides, start=1):
+        parts: List[str] = []
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                for para in shape.text_frame.paragraphs:
+                    text = "".join(run.text for run in para.runs).strip()
+                    if text:
+                        parts.append(text)
+            # Tables on a slide — emit each cell on its own line so the
+            # row structure survives chunking.
+            if shape.has_table:
+                for row in shape.table.rows:
+                    row_text = " | ".join(
+                        (cell.text or "").strip() for cell in row.cells
+                    ).strip()
+                    if row_text:
+                        parts.append(row_text)
+        # Speaker notes — useful context that lives outside the slide body.
+        if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
+            notes = (slide.notes_slide.notes_text_frame.text or "").strip()
+            if notes:
+                parts.append(f"[Notizen] {notes}")
+
+        body = "\n".join(parts).strip()
+        if not body:
+            continue
+        segments.append(
+            LoadedSegment(text=body, document_type="pptx", page=i)
+        )
+
+    if not segments:
+        raise DocumentLoadError(
+            f"PPTX '{path.name}' has no extractable text."
+        )
+    return segments
+
+
+# ---------------------------------------------------------------------------
+# ODT — OpenDocument Text. Converted to .docx via LibreOffice, then we
+# reuse ``_load_docx``. Same pattern as ``.doc`` legacy support.
+# ---------------------------------------------------------------------------
+
+def _load_odt(path: Path) -> List[LoadedSegment]:
+    """Convert ODT → DOCX with LibreOffice, then run the docx loader."""
+    try:
+        converted = convert_odt_to_docx(path)
+    except OfficeConversionError:
+        raise
+    segments = _load_docx(converted)
+    # Override per-segment ``document_type`` so retrieval citations show
+    # the original ``odt`` provenance, not the intermediate docx.
+    for s in segments:
+        s.document_type = "odt"
+    return segments
+
+
+# ---------------------------------------------------------------------------
 # Public dispatch
 # ---------------------------------------------------------------------------
 
@@ -410,6 +491,8 @@ _DISPATCH = {
     ".xls": (_load_xls_legacy, "xlsx"),
     ".html": (_load_html, "html"),
     ".htm": (_load_html, "html"),
+    ".pptx": (_load_pptx, "pptx"),
+    ".odt": (_load_odt, "odt"),
 }
 
 
