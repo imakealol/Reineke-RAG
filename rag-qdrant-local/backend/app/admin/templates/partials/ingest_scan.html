@@ -1,5 +1,115 @@
 {% if error %}
 <div class="alert alert-danger">{{ error }}</div>
+{% elif result and mediawiki_hint %}
+{# ------------------------------------------------------------- #}
+{# MediaWiki-Export erkannt — eigenes Formular statt Datei-Filter #}
+{# ------------------------------------------------------------- #}
+<div class="alert alert-info py-2 mb-3 small">
+  <strong>MediaWiki-Export erkannt.</strong> Der Wizard schaltet auf den
+  Wiki-Import-Modus um. Erkannte Dateien:
+  <ul class="m-0 mt-1 ps-3">
+    <li><code>{{ mediawiki_hint.xml_path }}</code></li>
+    {% if mediawiki_hint.uploads_path %}
+    <li><code>{{ mediawiki_hint.uploads_path }}</code> <span class="text-secondary">(Upload-Verzeichnis)</span></li>
+    {% else %}
+    <li><span class="text-warning">Kein <code>images/</code>- oder <code>uploads/</code>-Verzeichnis gefunden — Datei-Verweise werden nur als Metadaten gespeichert.</span></li>
+    {% endif %}
+    {% if mediawiki_hint.localsettings_path %}
+    <li><code>{{ mediawiki_hint.localsettings_path }}</code> <span class="text-secondary">(URL-Konfiguration aus LocalSettings übernommen)</span></li>
+    {% endif %}
+  </ul>
+</div>
+
+<form hx-post="/admin/api/ingest/run-mediawiki"
+      hx-target="#ingest-result"
+      hx-swap="innerHTML"
+      hx-indicator="#ingest-spinner">
+  <input type="hidden" name="tenant" value="{{ tenant }}">
+  <input type="hidden" name="project" value="{{ project }}">
+  <input type="hidden" name="xml_path" value="{{ mediawiki_hint.xml_path }}">
+  <input type="hidden" name="uploads_path" value="{{ mediawiki_hint.uploads_path or '' }}">
+
+  <fieldset class="mb-3">
+    <legend class="form-label small mb-1">Wiki-URL-Konfiguration</legend>
+    <div class="row g-2">
+      <div class="col-12 col-md-6">
+        <label class="form-label small mb-1" for="mw-base-url">Base-URL <span class="text-danger">*</span></label>
+        <input class="form-control form-control-sm" type="text"
+               id="mw-base-url" name="wiki_base_url"
+               placeholder="https://wiki.kunde.de"
+               value="{{ mediawiki_hint.base_url or '' }}"
+               required>
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small mb-1" for="mw-article-path">Article Path</label>
+        <input class="form-control form-control-sm" type="text"
+               id="mw-article-path" name="wiki_article_path"
+               value="{{ mediawiki_hint.article_path or '/wiki/$1' }}">
+      </div>
+      <div class="col-6 col-md-3">
+        <label class="form-label small mb-1" for="mw-script-path">Script Path</label>
+        <input class="form-control form-control-sm" type="text"
+               id="mw-script-path" name="wiki_script_path"
+               value="{{ mediawiki_hint.script_path or '/w' }}">
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset class="mb-3">
+    <legend class="form-label small mb-1">Namespaces einlesen</legend>
+    <div class="d-flex flex-wrap gap-3 small">
+      {% set ns_options = [
+        (0, "Hauptseiten (NS 0)"),
+        (1, "Diskussion (NS 1)"),
+        (6, "Datei / File (NS 6)"),
+        (10, "Vorlage / Template (NS 10)"),
+        (14, "Kategorie / Category (NS 14)")
+      ] %}
+      {% for ns_id, label in ns_options %}
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox"
+               name="allowed_namespaces" value="{{ ns_id }}"
+               id="ns-{{ ns_id }}"
+               {% if ns_id == 0 %}checked{% endif %}>
+        <label class="form-check-label" for="ns-{{ ns_id }}">{{ label }}</label>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="form-text">Voreingestellt ist nur NS 0 (Hauptseiten). Diskussions-, Vorlagen- und Kategorie-Seiten werden standardmäßig übersprungen.</div>
+  </fieldset>
+
+  <div class="row g-2 mb-3 small">
+    <div class="col-12 col-md-6">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="include_uploads" id="mw-include-uploads" checked>
+        <label class="form-check-label" for="mw-include-uploads">Verlinkte Dateien (PDF, DOCX, XLSX, PPTX, ODT, HTML) mit indexieren</label>
+      </div>
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="include_redirects" id="mw-include-redirects">
+        <label class="form-check-label" for="mw-include-redirects">Redirects einlesen</label>
+      </div>
+    </div>
+    <div class="col-12 col-md-6">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="reindex_changed_only" id="mw-reindex" checked>
+        <label class="form-check-label" for="mw-reindex">Nur geänderte Seiten/Dateien neu indizieren</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-secondary" type="submit" name="dry_run" value="on">
+      Probelauf (zählt nur)
+    </button>
+    <button class="btn btn-success" type="submit">
+      Wiki importieren
+    </button>
+  </div>
+  <span id="ingest-spinner" class="htmx-indicator ms-2 small text-secondary">
+    Wiki-Import läuft, bitte warten…
+  </span>
+</form>
+
 {% elif result %}
 <div class="mb-3">
   <div class="small text-secondary">Scan-Ergebnis für <code>{{ path }}</code></div>

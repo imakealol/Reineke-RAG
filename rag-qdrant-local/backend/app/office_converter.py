@@ -102,3 +102,12 @@ def convert_xls_to_xlsx(src: Path, outdir: Optional[Path] = None) -> Path:
         raise OfficeConversionError(f"Expected a .xls file, got {src.suffix}")
     out = outdir or settings.converted_dir
     return _run_soffice(src, "xlsx", out)
+
+
+def convert_odt_to_docx(src: Path, outdir: Optional[Path] = None) -> Path:
+    """Convert an OpenDocument Text file (`.odt`) to `.docx` so we can
+    reuse the existing python-docx loader. Requires LibreOffice."""
+    if src.suffix.lower() != ".odt":
+        raise OfficeConversionError(f"Expected a .odt file, got {src.suffix}")
+    out = outdir or settings.converted_dir
+    return _run_soffice(src, "docx", out)

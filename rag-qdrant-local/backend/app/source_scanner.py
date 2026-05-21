@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from .schemas import FileEntry
 from .utils import file_modified_iso
 
-SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".doc", ".xlsx", ".xls", ".html", ".htm"}
+SUPPORTED_EXTENSIONS = {
+    ".pdf",
+    ".docx",
+    ".doc",
+    ".xlsx",
+    ".xls",
+    ".html",
+    ".htm",
+    ".pptx",
+    ".odt",
+}
 
 # Filenames / dirs to never traverse — backups, lock files, OS junk.
 _IGNORED_DIR_NAMES = {".git", "__pycache__", ".DS_Store", "node_modules", ".idea"}
@@ -22,10 +32,28 @@ _IGNORED_FILE_PREFIXES = ("~$", "._", ".")
 
 
 @dataclass
+class MediaWikiExportHint:
+    """Marker that a scanned directory looks like a MediaWiki export.
+
+    The wizard can use this to branch its UI: instead of the file-type
+    filter, show a wiki-import form pre-filled with the detected paths
+    (and, when ``LocalSettings.example.php`` is present, the URL config).
+    """
+
+    xml_path: str
+    uploads_path: Optional[str]
+    localsettings_path: Optional[str]
+    base_url: Optional[str]
+    article_path: Optional[str]
+    script_path: Optional[str]
+
+
+@dataclass
 class ScanResult:
     supported: List[FileEntry]
     unsupported: List[FileEntry]
     file_types: Dict[str, int]
+    mediawiki_hint: Optional[MediaWikiExportHint] = None
 
     @property
     def all_files(self) -> List[FileEntry]:
@@ -105,11 +133,100 @@ def _classify(path: Path) -> Tuple[bool, str]:
     return (ext in SUPPORTED_EXTENSIONS, ext)
 
 
+_MEDIAWIKI_XML_SNIFF_BYTES = 4096
+
+
+def _looks_like_mediawiki_xml(path: Path) -> bool:
+    """Cheap sniff: does the first few KB of ``path`` contain a
+    ``<mediawiki`` root element? Skips the XML prolog and namespace prefix
+    matters not — substring match is enough."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(_MEDIAWIKI_XML_SNIFF_BYTES)
+    except OSError:
+        return False
+    return b"<mediawiki" in head
+
+
+def detect_mediawiki_export(root: Path) -> Optional[MediaWikiExportHint]:
+    """Return a :class:`MediaWikiExportHint` if ``root`` looks like a
+    MediaWiki XML export, else ``None``.
+
+    Detection rule:
+
+      * at least one ``*.xml`` file directly under ``root`` whose head
+        contains ``<mediawiki`` (XML namespace prefix is tolerated)
+      * an ``images/`` or ``uploads/`` directory next to it (optional —
+        the hint is still emitted without uploads, just with a ``None``
+        uploads_path)
+
+    If a ``LocalSettings*.php`` is present in the same root, we parse it
+    for ``$wgServer`` / ``$wgArticlePath`` / ``$wgScriptPath`` and
+    pre-fill the hint so the wizard can avoid asking the operator for
+    values the customer already supplied.
+    """
+    if not root.is_dir():
+        return None
+
+    # Find an .xml file that smells like a MediaWiki export. Pick the
+    # newest if several exist (typical when re-exports accumulate).
+    candidates: List[Tuple[Path, float]] = []
+    for entry in root.iterdir():
+        if not entry.is_file() or entry.suffix.lower() != ".xml":
+            continue
+        if not _looks_like_mediawiki_xml(entry):
+            continue
+        try:
+            mtime = entry.stat().st_mtime
+        except OSError:
+            continue
+        candidates.append((entry, mtime))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: x[1], reverse=True)
+    xml_path = candidates[0][0]
+
+    uploads_path: Optional[Path] = None
+    for name in ("images", "uploads"):
+        d = root / name
+        if d.is_dir():
+            uploads_path = d
+            break
+
+    base_url: Optional[str] = None
+    article_path: Optional[str] = None
+    script_path: Optional[str] = None
+    localsettings_path: Optional[Path] = None
+    for ls_candidate in root.glob("LocalSettings*.php"):
+        if ls_candidate.is_file():
+            localsettings_path = ls_candidate
+            # Local import to keep the scanner self-contained; the parser
+            # has no side effects on the FS and tolerates missing fields.
+            from .connectors.mediawiki.localsettings import parse_localsettings_file
+            cfg = parse_localsettings_file(ls_candidate)
+            base_url = cfg.server
+            article_path = cfg.article_path
+            script_path = cfg.script_path
+            break
+
+    return MediaWikiExportHint(
+        xml_path=str(xml_path),
+        uploads_path=str(uploads_path) if uploads_path else None,
+        localsettings_path=str(localsettings_path) if localsettings_path else None,
+        base_url=base_url,
+        article_path=article_path,
+        script_path=script_path,
+    )
+
+
 def scan_directory(root: Path, *, recursive: bool = True) -> ScanResult:
     """Enumerate files under `root`, splitting them into supported / unsupported.
 
     `root` MUST already have passed :func:`path_security.resolve_safe_path`
     — this function does not re-validate.
+
+    Also detects MediaWiki export signatures at the top level of ``root``
+    so the admin wizard can branch its UI accordingly.
     """
     supported: List[FileEntry] = []
     unsupported: List[FileEntry] = []
@@ -135,4 +252,11 @@ def scan_directory(root: Path, *, recursive: bool = True) -> ScanResult:
         )
         (supported if is_supported else unsupported).append(entry)
 
-    return ScanResult(supported=supported, unsupported=unsupported, file_types=file_types)
+    mediawiki_hint = detect_mediawiki_export(root)
+
+    return ScanResult(
+        supported=supported,
+        unsupported=unsupported,
+        file_types=file_types,
+        mediawiki_hint=mediawiki_hint,
+    )

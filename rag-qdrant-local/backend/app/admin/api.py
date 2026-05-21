@@ -32,6 +32,9 @@ from ..database import SessionLocal, get_db
 from ..ingestion_service import IngestionService
 from ..models import Document, IngestionJob, IngestSchedule, RequestLog, TenantProjectPrompt
 from .. import rerank_settings as rerank_settings_module
+from ..connectors.mediawiki.errors import MediaWikiError
+from ..connectors.mediawiki.schemas import MediaWikiWikiConfig
+from ..connectors.mediawiki.service import MediaWikiImportService
 from ..ollama_client import OllamaClient
 from ..path_security import (
     PathSecurityError,
@@ -361,6 +364,7 @@ async def ingest_scan(
             "path": safe_path or raw_path,
             "recursive": recursive,
             "skip": skip_summary,
+            "mediawiki_hint": result.mediawiki_hint if result else None,
         },
     )
 
@@ -424,6 +428,171 @@ async def _run_ingest_in_background(
             bg_db.rollback()
     finally:
         bg_db.close()
+
+
+async def _run_wiki_in_background(
+    *,
+    job_id: str,
+    tenant: str,
+    project: str,
+    xml_path: str,
+    uploads_path: Optional[str],
+    wiki_cfg: MediaWikiWikiConfig,
+    allowed_namespaces: List[int],
+    include_redirects: bool,
+    include_uploads: bool,
+    reindex_changed_only: bool,
+    dry_run: bool,
+) -> None:
+    """Run a MediaWiki import with its own DB session so the HTTP request
+    that kicked it off can return immediately. Same shape as the file
+    ingest runner above — wraps the run in the per-job log capture so
+    the admin UI can show the tail alongside the progress bar."""
+    bg_db: Session = SessionLocal()
+    try:
+        with capture_logs_for_job(job_id):
+            try:
+                svc = MediaWikiImportService()
+                await svc.import_xml(
+                    bg_db,
+                    tenant=tenant,
+                    project=project,
+                    xml_path=xml_path,
+                    uploads_path=uploads_path,
+                    wiki=wiki_cfg,
+                    allowed_namespaces=allowed_namespaces,
+                    include_redirects=include_redirects,
+                    include_uploads=include_uploads,
+                    reindex_changed_only=reindex_changed_only,
+                    dry_run=dry_run,
+                    job_id=job_id,
+                )
+            except Exception:
+                log.exception("Background MediaWiki import failed")
+                raise
+    except Exception as exc:
+        bg_db.rollback()
+        try:
+            job = bg_db.execute(
+                select(IngestionJob).where(IngestionJob.id == job_id)
+            ).scalar_one_or_none()
+            if job is not None:
+                job.status = "failed"
+                job.error_message = str(exc)
+                job.current_file = None
+                job.completed_at = datetime.now(timezone.utc)
+                bg_db.commit()
+        except Exception:
+            log.exception("Failed to mark wiki job %s as failed", job_id)
+            bg_db.rollback()
+    else:
+        try:
+            job = bg_db.execute(
+                select(IngestionJob).where(IngestionJob.id == job_id)
+            ).scalar_one_or_none()
+            if job is not None and job.status == "running":
+                job.status = "completed" if (job.files_failed or 0) == 0 else "completed_with_errors"
+                job.current_file = None
+                job.completed_at = datetime.now(timezone.utc)
+                bg_db.commit()
+        except Exception:
+            log.exception("Failed to mark wiki job %s as completed", job_id)
+            bg_db.rollback()
+    finally:
+        bg_db.close()
+
+
+@router.post("/ingest/run-mediawiki", response_class=HTMLResponse)
+async def ingest_run_mediawiki(
+    request: Request,
+    db: Session = Depends(get_db),
+) -> HTMLResponse:
+    """Trigger a MediaWiki XML import from the admin wizard.
+
+    Same response shape as ``/ingest/run`` — returns the live-progress
+    fragment that polls ``/admin/api/jobs/{id}/progress`` every couple
+    of seconds.
+    """
+    form = await request.form()
+    tenant = (form.get("tenant") or "").strip()
+    project = (form.get("project") or "").strip()
+    xml_path = (form.get("xml_path") or "").strip()
+    uploads_path = (form.get("uploads_path") or "").strip() or None
+    base_url = (form.get("wiki_base_url") or "").strip()
+    article_path = (form.get("wiki_article_path") or "/wiki/$1").strip() or "/wiki/$1"
+    script_path = (form.get("wiki_script_path") or "/w").strip() or "/w"
+    raw_namespaces = form.getlist("allowed_namespaces")
+    include_redirects = form.get("include_redirects") == "on"
+    include_uploads = form.get("include_uploads") == "on"
+    reindex_changed_only = form.get("reindex_changed_only") == "on"
+    dry_run = form.get("dry_run") == "on"
+
+    try:
+        allowed_namespaces = sorted(
+            {int(n) for n in raw_namespaces if n.strip().lstrip("-").isdigit()}
+        )
+    except ValueError:
+        allowed_namespaces = [0]
+    if not allowed_namespaces:
+        allowed_namespaces = [0]
+
+    error: Optional[str] = None
+    if not tenant or not project or not xml_path or not base_url:
+        error = "Bitte Mandant, Projekt, XML-Pfad und Wiki-Basis-URL ausfüllen."
+    else:
+        try:
+            safe_xml = resolve_safe_path(xml_path)
+            if uploads_path:
+                resolve_safe_path(uploads_path)
+        except PathSecurityError as exc:
+            error = str(exc)
+
+    if error:
+        return templates.TemplateResponse(
+            "partials/ingest_result.html",
+            {"request": request, "error": error, "result": None},
+        )
+
+    wiki_cfg = MediaWikiWikiConfig(
+        base_url=base_url,
+        article_path=article_path,
+        script_path=script_path,
+    )
+
+    job = IngestionJob(
+        id=new_id(),
+        tenant=tenant,
+        project=project,
+        source_path=str(safe_xml),
+        status="running",
+    )
+    db.add(job)
+    db.commit()
+
+    asyncio.create_task(
+        _run_wiki_in_background(
+            job_id=job.id,
+            tenant=tenant,
+            project=project,
+            xml_path=str(safe_xml),
+            uploads_path=uploads_path,
+            wiki_cfg=wiki_cfg,
+            allowed_namespaces=allowed_namespaces,
+            include_redirects=include_redirects,
+            include_uploads=include_uploads,
+            reindex_changed_only=reindex_changed_only,
+            dry_run=dry_run,
+        )
+    )
+
+    return templates.TemplateResponse(
+        "partials/ingest_progress.html",
+        {
+            "request": request,
+            "job": job,
+            "progress": _build_job_progress(job),
+        },
+    )
 
 
 @router.post("/ingest/run", response_class=HTMLResponse)
