@@ -65,12 +65,39 @@ async def lifespan(app: FastAPI):
     apply_overrides()  # load runtime settings overrides from SQLite
     log.info("Backend starting on %s:%s", settings.HOST, settings.PORT)
     log.info("Allowed base paths: %s", [str(p) for p in settings.allowed_base_paths])
+    await _log_resolved_num_ctx()
     scheduler.start()
     try:
         yield
     finally:
         scheduler.shutdown()
         log.info("Backend shutting down.")
+
+
+async def _log_resolved_num_ctx() -> None:
+    """Print the num_ctx we'll actually use, so admins see it without grepping.
+
+    Either logs the env override or probes /api/show. Never fatal — if Ollama
+    is offline at startup we just note that and let the first chat request
+    surface the underlying issue.
+    """
+    if settings.OLLAMA_NUM_CTX is not None:
+        log.info(
+            "num_ctx=%d for chat model '%s' (env override OLLAMA_NUM_CTX)",
+            settings.OLLAMA_NUM_CTX, settings.CHAT_MODEL,
+        )
+        return
+    try:
+        ctx = await OllamaClient().get_context_length(settings.CHAT_MODEL)
+        log.info(
+            "num_ctx=%d for chat model '%s' (auto-detected from /api/show)",
+            ctx, settings.CHAT_MODEL,
+        )
+    except Exception as exc:  # pragma: no cover — defensive logging only
+        log.warning(
+            "Could not pre-resolve num_ctx for '%s' at startup (%s); "
+            "first chat request will retry.", settings.CHAT_MODEL, exc,
+        )
 
 
 app = FastAPI(

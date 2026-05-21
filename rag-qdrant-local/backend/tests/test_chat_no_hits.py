@@ -20,6 +20,19 @@ class _ExplodingOllama:
         raise AssertionError("chat() must not be called when there are no hits")
 
 
+class _EmptyResult:
+    """Mimics SQLAlchemy Result for queries that return no rows."""
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return []
+
+    def scalar(self):
+        return 0
+
+
 class _StubSession:
     """Minimal duck-typed Session — collects writes, ignores everything else."""
 
@@ -31,6 +44,11 @@ class _StubSession:
 
     def get(self, _model, _id):  # type: ignore[no-untyped-def]
         return None
+
+    def execute(self, _stmt):  # type: ignore[no-untyped-def]
+        # Cross-turn citation recall (and any other read-side query the
+        # chat path makes) gets an empty result set.
+        return _EmptyResult()
 
     def flush(self):
         pass

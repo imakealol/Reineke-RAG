@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # Per-request keep_alive — passed in /api/chat and /api/embeddings bodies.
     # Format: "5m", "1h", "24h", "-1" (forever), "0" (unload immediately).
     OLLAMA_KEEP_ALIVE: str = "1h"
+    # Optional clamp for the chat model's context window. None = auto-detect
+    # via /api/show (use the model's full declared max). Set to an int to
+    # override — useful on RAM-constrained boxes where the full KV cache
+    # would push the host into OOM. Logged loudly at startup either way.
+    OLLAMA_NUM_CTX: Optional[int] = None
 
     # Qdrant
     QDRANT_URL: str = "http://localhost:6333"
@@ -83,7 +88,9 @@ class Settings(BaseSettings):
     CHAT_MAX_TOKENS: int = 1024
     # Number of past user/assistant turn-pairs to include from this session's
     # SQLite history before the current question. 0 = stateless (no memory).
-    CHAT_HISTORY_TURNS: int = 4
+    # Bumped from 4 → 6 alongside the num_ctx auto-detect: now that we no
+    # longer silently truncate at 2048 tokens, more history is safe to send.
+    CHAT_HISTORY_TURNS: int = 6
 
     # LibreOffice binary
     SOFFICE_BIN: str = "soffice"
@@ -129,6 +136,17 @@ class Settings(BaseSettings):
     def _score_in_range(cls, v: float) -> float:
         if not 0.0 <= v <= 1.0:
             raise ValueError("MIN_RETRIEVAL_SCORE must be in [0, 1]")
+        return v
+
+    @field_validator("OLLAMA_NUM_CTX")
+    @classmethod
+    def _ollama_num_ctx(cls, v: Optional[int]) -> Optional[int]:
+        if v is None:
+            return v
+        # Below 512 nothing useful fits — likely a typo. Above is the
+        # operator's call; we don't second-guess large boxes.
+        if v < 512:
+            raise ValueError("OLLAMA_NUM_CTX, if set, must be ≥ 512")
         return v
 
     # ---- Derived helpers --------------------------------------------------

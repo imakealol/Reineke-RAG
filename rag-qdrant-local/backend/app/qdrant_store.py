@@ -211,3 +211,44 @@ class QdrantStore:
             SearchHit(score=float(r.score), payload=dict(r.payload or {}), point_id=str(r.id))
             for r in results
         ]
+
+    def get_points_by_ids(
+        self,
+        *,
+        tenant: str,
+        project: str,
+        point_ids: List[str],
+    ) -> List[SearchHit]:
+        """Fetch known points by id with a tenant/project safety check.
+
+        Used by the cross-turn citation recall path: chunks that were cited
+        in a recent assistant message get pulled back into the candidate
+        pool for the next query, so a follow-up like "tell me about the
+        other one you cited" can still find the original document.
+
+        Returns SearchHits with ``score=0.0`` — the reranker will compute
+        the real relevance against the new query. Tenant/project mismatches
+        are silently dropped (defensive: prevents a stale stored id from
+        leaking content into the wrong collection).
+        """
+        if not point_ids:
+            return []
+        if not tenant or not project:
+            raise QdrantStoreError(
+                "get_points_by_ids() requires non-empty tenant and project."
+            )
+
+        records = self.client.retrieve(
+            collection_name=self.collection,
+            ids=point_ids,
+            with_payload=True,
+            with_vectors=False,
+        )
+
+        out: List[SearchHit] = []
+        for r in records:
+            payload = dict(r.payload or {})
+            if payload.get("tenant") != tenant or payload.get("project") != project:
+                continue
+            out.append(SearchHit(score=0.0, payload=payload, point_id=str(r.id)))
+        return out
