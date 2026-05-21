@@ -499,6 +499,14 @@ class ChatService:
         # doesn't embed near it.
         past_citation_ids = self._load_recent_citation_ids(resolved_session_id)
 
+        # Load history once, before retrieval, so the query-rewriter inside
+        # retrieve() can resolve "and what about that?"-style follow-ups.
+        # The same history feeds the LLM call further down — no second DB
+        # round-trip needed.
+        history = self._load_recent_messages(
+            resolved_session_id, turns=settings.CHAT_HISTORY_TURNS
+        )
+
         # Phase B — no DB held during this part
         hits = await self.retrieval.retrieve(
             tenant=tenant,
@@ -506,6 +514,7 @@ class ChatService:
             question=question,
             top_k=top_k,
             past_citation_ids=past_citation_ids,
+            history=history,
         )
 
         if not hits:
@@ -532,10 +541,6 @@ class ChatService:
             "Relevantes enthält. Schließe deine Antwort mit einem Abschnitt "
             "'Quellen:' ab, der die verwendeten Dokumente, Seiten/Sheets und "
             "Zeilen auflistet."
-        )
-
-        history = self._load_recent_messages(
-            resolved_session_id, turns=settings.CHAT_HISTORY_TURNS
         )
         persona = self._load_persona(tenant, project)
         # Local import to avoid circular dependency at module load time.

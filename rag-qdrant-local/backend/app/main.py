@@ -438,11 +438,16 @@ async def retrieve_endpoint(
     eval runner to measure Recall@K / MRR in seconds instead of minutes.
     """
     try:
+        history = (
+            [{"role": h.role, "content": h.content} for h in req.history]
+            if req.history else None
+        )
         hits = await svc.retrieval.retrieve(
             tenant=req.tenant,
             project=req.project,
             question=req.question,
             top_k=req.top_k,
+            history=history,
         )
     except OllamaError as exc:
         log.exception("Retrieve failed (Ollama): %s", exc)

@@ -105,7 +105,14 @@ EDITABLE_KEYS: List[EditableKey] = [
         "CHAT_HISTORY_TURNS", "int", "Chat-Historie (Turn-Paare)",
         help="Wieviele frühere Frage/Antwort-Paare aus dieser Session werden "
              "dem Chat-Modell mitgegeben. 0 = stateless.",
-        minimum=0, maximum=20,
+        minimum=0, maximum=30,
+    ),
+    EditableKey(
+        "REWRITE_MODEL", "str", "Query-Rewriter · Modell",
+        help="Modell für die Folgefragen-Umformulierung (z.B. 'qwen2.5:7b' "
+             "oder 'qwen2.5:3b' für niedrigere Latenz). Leer = nutzt das "
+             "Chat-Modell. Modell muss in Ollama vorhanden sein.",
+        options_url="/admin/api/ollama/models?role=chat",
     ),
     EditableKey(
         "LOG_LEVEL", "enum", "Log-Level",

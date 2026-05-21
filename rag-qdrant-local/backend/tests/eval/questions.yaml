@@ -132,3 +132,50 @@
   difficulty: easy
   question: "Wer hat das Champions-League-Finale 2026 gewonnen?"
   expected_refusal: true
+
+# ===========================================================================
+# Multi-turn follow-ups — the question alone has no semantic anchor; only
+# the conversation history reveals which policy is meant. Without the
+# query-rewriter these all fail on dense-only retrieval. Each case sets
+# an explicit ``history`` field (oldest-first) passed to /retrieve.
+# ===========================================================================
+
+- id: q14
+  category: follow_up
+  difficulty: medium
+  history:
+    - role: user
+      content: "Welche Anforderungen stellt die Kennwort-Richtlinie an Passwörter?"
+    - role: assistant
+      content: "Kennwörter müssen mindestens 14 Zeichen lang sein und Ziffern, Groß- und Kleinbuchstaben sowie ein Sonderzeichen enthalten. Persönliche Daten dürfen nicht enthalten sein."
+  question: "Wie oft muss man es ändern?"
+  expected_doc: "Kennwort"        # PL.ISMS007 — "es" = Kennwort
+  expected_keywords: ["Monate", "ändern"]
+
+- id: q15
+  category: follow_up
+  difficulty: hard
+  history:
+    - role: user
+      content: "Welche Regeln gibt es zu Bring Your Own Device (BYOD)?"
+    - role: assistant
+      content: "Die BYOD-Richtlinie regelt die Nutzung privater Endgeräte: zugelassene Geräte, Verschlüsselungspflicht und Trennung beruflicher Daten."
+  question: "Und wie ist das bei Geräten, die wir den Mitarbeitern stellen?"
+  # Should pivot to ISMS014 (Mobilgeräte / Telearbeit) — "bei den anderen Geräten"
+  expected_doc: "Telearbeit"
+  expected_keywords: ["Mobilgerät", "Telearbeit", "Heimarbeit"]
+
+- id: q16
+  category: follow_up
+  difficulty: easy
+  # Negative case: the follow-up is fully self-contained. The rewriter
+  # MUST NOT inject prior topics into it (no "Kennwort" should leak in).
+  # Recall@5 must still find the Backup-Richtlinie cleanly.
+  history:
+    - role: user
+      content: "Welche Anforderungen stellt die Kennwort-Richtlinie an Passwörter?"
+    - role: assistant
+      content: "Kennwörter müssen mindestens 14 Zeichen lang sein."
+  question: "Wie ist die Backup-Strategie laut der Backup-Richtlinie geregelt?"
+  expected_doc: "Backup"
+  expected_keywords: ["Backup", "Sicherung"]

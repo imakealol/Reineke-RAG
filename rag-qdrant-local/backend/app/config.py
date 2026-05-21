@@ -88,9 +88,23 @@ class Settings(BaseSettings):
     CHAT_MAX_TOKENS: int = 1024
     # Number of past user/assistant turn-pairs to include from this session's
     # SQLite history before the current question. 0 = stateless (no memory).
-    # Bumped from 4 → 6 alongside the num_ctx auto-detect: now that we no
-    # longer silently truncate at 2048 tokens, more history is safe to send.
-    CHAT_HISTORY_TURNS: int = 6
+    # Bumped 4 → 6 with the num_ctx auto-detect (no more silent 2048-token
+    # truncation), then 6 → 10 once the query-rewriter landed: more
+    # verbatim history pays off in factual recall ("how big was that
+    # value again?") without inflating the prompt past num_ctx.
+    CHAT_HISTORY_TURNS: int = 10
+
+    # Query rewriter — resolves pronoun/reference follow-ups before the
+    # embed call so retrieval doesn't have to guess at "the other one
+    # you cited" from six bare words. Off-by-default until proven safe;
+    # see docs/QUERY_REWRITER.md for the design notes.
+    ENABLE_QUERY_REWRITE: bool = True
+    # Model used for the rewrite step. Empty string = "use CHAT_MODEL"
+    # (zero extra RAM, but the rewrite runs at chat-model speed). Set to
+    # a smaller model like "qwen2.5:7b" or "qwen2.5:3b" to cut the
+    # rewrite latency to <1s — recommended on hardware that can keep
+    # both models warm via OLLAMA_KEEP_ALIVE.
+    REWRITE_MODEL: str = ""
 
     # LibreOffice binary
     SOFFICE_BIN: str = "soffice"
