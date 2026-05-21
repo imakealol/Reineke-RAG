@@ -46,6 +46,37 @@ def test_strip_trailer_handles_indented_label():
     assert cleaned == "Antwort."
 
 
+def test_strip_trailer_handles_markdown_bold_label():
+    """Regression: qwen2.5 commonly emits ``**Quellen:**`` instead of plain
+    ``Quellen:``. Before the trailer regex tolerated markdown decoration,
+    the bold variant slipped through and the user got two Quellen blocks
+    side-by-side (LLM's wrong one + ours). Observed via the OpenAI compat
+    path on the local reineke/watch test of PR #19's bundle.
+    """
+    answer = (
+        "Die Backup-Strategie ist in mehreren Richtlinien geregelt.\n\n"
+        "**Quellen:**\n"
+        "- Quelle 1: PL.ISMS010_Backup-Richtlinie.docx\n"
+        "- Quelle 2: PL.ISMS013_…\n"
+    )
+    cleaned = ChatService._strip_llm_sources_trailer(answer)
+    assert "Quellen" not in cleaned
+    assert "ISMS010" not in cleaned
+    assert cleaned.startswith("Die Backup-Strategie")
+
+
+def test_strip_trailer_handles_markdown_heading_label():
+    answer = "Body.\n\n## Quellen:\n- foo.pdf\n"
+    cleaned = ChatService._strip_llm_sources_trailer(answer)
+    assert cleaned == "Body."
+
+
+def test_strip_trailer_handles_italic_label():
+    answer = "Body.\n\n*Quellen:*\n- foo.pdf\n"
+    cleaned = ChatService._strip_llm_sources_trailer(answer)
+    assert cleaned == "Body."
+
+
 def test_ensure_sources_appended_replaces_llm_trailer_with_ours():
     """The full path: LLM wrote its own block, we strip it, append ours."""
     answer = "Hauptantwort.\n\nQuellen:\n- erfunden.pdf (Seite 99)\n"

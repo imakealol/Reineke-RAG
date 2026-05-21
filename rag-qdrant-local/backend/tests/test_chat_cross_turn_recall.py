@@ -4,52 +4,50 @@ The recall helper feeds previously-cited chunks back into the retrieval
 candidate pool so structurally-referential follow-ups ("the other one you
 cited earlier") have their target still in scope. These tests verify the
 SQLite walk + point-id reconstruction without touching Qdrant.
+
+The production code SELECTs only the ``sources_json`` column (avoiding
+DetachedInstanceError after session_scope commits and closes), so the
+stub here returns *strings* — the same shape SQLAlchemy returns for
+``select(ChatMessage.sources_json).scalars().all()``.
 """
 
 from __future__ import annotations
 
 import json
 from contextlib import contextmanager
-from typing import Any, Iterator, List, Optional
+from typing import Iterator, List, Optional
 
 from app.chat_service import ChatService
 from app.utils import deterministic_uuid
 
 
 # ---------------------------------------------------------------------------
-# Stub Session + factory — capture the executed query and feed back rows.
+# Stub Session + factory — returns pre-filtered sources_json strings
 # ---------------------------------------------------------------------------
 
-class _Row:
-    def __init__(self, role: str, content: str, sources_json: Optional[str]) -> None:
-        self.role = role
-        self.content = content
-        self.sources_json = sources_json
-
-
 class _Result:
-    def __init__(self, rows: List[_Row]) -> None:
-        self._rows = rows
+    def __init__(self, blobs: List[Optional[str]]) -> None:
+        self._blobs = blobs
 
     def scalars(self):
         return self
 
     def all(self):
-        return list(self._rows)
+        return list(self._blobs)
 
 
 class _StubSession:
-    def __init__(self, rows: List[_Row]) -> None:
-        self._rows = rows
+    def __init__(self, blobs: List[Optional[str]]) -> None:
+        self._blobs = blobs
 
     def execute(self, _stmt):
-        return _Result(self._rows)
+        return _Result(self._blobs)
 
 
-def _factory_for(rows: List[_Row]):
+def _factory_for(blobs: List[Optional[str]]):
     @contextmanager
     def factory() -> Iterator[_StubSession]:
-        yield _StubSession(rows)
+        yield _StubSession(blobs)
 
     return factory
 
@@ -69,7 +67,7 @@ def test_recall_returns_empty_when_turns_zero():
 
 
 def test_recall_returns_empty_when_per_turn_zero():
-    svc = ChatService(session_factory=_factory_for([_Row("assistant", "x", "[]")]))  # type: ignore[arg-type]
+    svc = ChatService(session_factory=_factory_for(["[]"]))  # type: ignore[arg-type]
     assert svc._load_recent_citation_ids("sess", per_turn=0) == []
 
 
@@ -83,28 +81,16 @@ def test_recall_returns_empty_when_no_assistant_rows():
 # ---------------------------------------------------------------------------
 
 def test_recall_reconstructs_point_id_from_document_id_and_chunk_index():
-    rows = [
-        _Row(
-            "assistant",
-            "Antwort.",
-            json.dumps([_src("doc-A", 3)]),
-        )
-    ]
-    svc = ChatService(session_factory=_factory_for(rows))  # type: ignore[arg-type]
+    blobs = [json.dumps([_src("doc-A", 3)])]
+    svc = ChatService(session_factory=_factory_for(blobs))  # type: ignore[arg-type]
     out = svc._load_recent_citation_ids("sess")
     # Must match exactly what ingestion_service writes for (doc-A, chunk 3).
     assert out == [deterministic_uuid("doc-A", "3")]
 
 
 def test_recall_caps_at_per_turn_per_assistant_message():
-    rows = [
-        _Row(
-            "assistant",
-            "Antwort mit vielen Quellen.",
-            json.dumps([_src("doc-A", i) for i in range(10)]),
-        )
-    ]
-    svc = ChatService(session_factory=_factory_for(rows))  # type: ignore[arg-type]
+    blobs = [json.dumps([_src("doc-A", i) for i in range(10)])]
+    svc = ChatService(session_factory=_factory_for(blobs))  # type: ignore[arg-type]
     out = svc._load_recent_citation_ids("sess", per_turn=2)
     # Only the first two citations from the row contribute.
     assert out == [
@@ -114,13 +100,9 @@ def test_recall_caps_at_per_turn_per_assistant_message():
 
 
 def test_recall_dedupes_when_same_chunk_cited_in_multiple_turns():
-    same_src = json.dumps([_src("doc-A", 0)])
-    rows = [
-        _Row("assistant", "t3", same_src),  # newest
-        _Row("assistant", "t2", same_src),
-        _Row("assistant", "t1", same_src),  # oldest
-    ]
-    svc = ChatService(session_factory=_factory_for(rows))  # type: ignore[arg-type]
+    same_blob = json.dumps([_src("doc-A", 0)])
+    blobs = [same_blob, same_blob, same_blob]  # newest first
+    svc = ChatService(session_factory=_factory_for(blobs))  # type: ignore[arg-type]
     out = svc._load_recent_citation_ids("sess", turns=3, per_turn=2)
     assert out == [deterministic_uuid("doc-A", "0")]
 
@@ -130,13 +112,18 @@ def test_recall_dedupes_when_same_chunk_cited_in_multiple_turns():
 # ---------------------------------------------------------------------------
 
 def test_recall_skips_rows_with_unparseable_sources_json():
-    rows = [
-        _Row("assistant", "bad", "not json {"),
-        _Row("assistant", "good", json.dumps([_src("doc-A", 0)])),
-    ]
-    svc = ChatService(session_factory=_factory_for(rows))  # type: ignore[arg-type]
+    blobs = ["not json {", json.dumps([_src("doc-A", 0)])]
+    svc = ChatService(session_factory=_factory_for(blobs))  # type: ignore[arg-type]
     out = svc._load_recent_citation_ids("sess")
     assert out == [deterministic_uuid("doc-A", "0")]
+
+
+def test_recall_skips_rows_with_null_sources_json():
+    """SQLite returns None for NULL sources_json — covers user-only rows
+    that somehow ended up in the assistant filter (defensive)."""
+    blobs = [None, json.dumps([_src("doc-A", 0)])]
+    svc = ChatService(session_factory=_factory_for(blobs))  # type: ignore[arg-type]
+    assert svc._load_recent_citation_ids("sess") == [deterministic_uuid("doc-A", "0")]
 
 
 def test_recall_skips_items_without_document_id_or_chunk_index():
@@ -146,13 +133,12 @@ def test_recall_skips_items_without_document_id_or_chunk_index():
         {"chunk_index": 5},                        # missing document_id
         {"document_id": "doc-Y", "chunk_index": 1},  # valid
     ])
-    rows = [_Row("assistant", "x", bad_payload)]
-    svc = ChatService(session_factory=_factory_for(rows))  # type: ignore[arg-type]
+    svc = ChatService(session_factory=_factory_for([bad_payload]))  # type: ignore[arg-type]
     out = svc._load_recent_citation_ids("sess")
     assert out == [deterministic_uuid("doc-Y", "1")]
 
 
 def test_recall_handles_sources_json_being_not_a_list():
-    rows = [_Row("assistant", "x", json.dumps({"document_id": "x", "chunk_index": 0}))]
-    svc = ChatService(session_factory=_factory_for(rows))  # type: ignore[arg-type]
+    blob = json.dumps({"document_id": "x", "chunk_index": 0})
+    svc = ChatService(session_factory=_factory_for([blob]))  # type: ignore[arg-type]
     assert svc._load_recent_citation_ids("sess") == []
