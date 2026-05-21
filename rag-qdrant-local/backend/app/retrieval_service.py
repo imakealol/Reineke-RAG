@@ -1,9 +1,10 @@
 """Retrieval = embed query → Qdrant search (tenant+project filter) →
-optional cross-encoder rerank → top-K."""
+optional cross-encoder rerank → stem-dedup → top-K."""
 
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from typing import Callable, ContextManager, List, Optional
 
@@ -20,6 +21,81 @@ from .utils import get_logger
 log = get_logger(__name__)
 
 SessionFactory = Callable[[], ContextManager[Session]]
+
+
+# ---------------------------------------------------------------------------
+# Stem-based deduplication
+# ---------------------------------------------------------------------------
+# Customers commonly have both the source DOCX and an exported PDF of the
+# same document. Without dedup, both win retrieval slots for the same
+# content, starving genuinely-different documents out of the top-K. We
+# collapse by filename stem so each *logical* document gets at most one
+# slot at this stage; finer-grained chunk dedup inside a document (page 2
+# vs page 6 of the same PDF) stays — that's signal, not noise.
+#
+# Stem-stripping rules mirror the chunker so the join is symmetric:
+# strip extension, strip ISO date suffix (_20251231), strip version suffix
+# (_v2 / -v10). Two passes for names carrying both.
+
+_FILENAME_DATE_SUFFIX_RE = re.compile(r"_\d{8}$")
+_FILENAME_VERSION_SUFFIX_RE = re.compile(r"[_\-]v\d+$")
+
+
+def _document_stem(file_name: str) -> str:
+    """Return the comparison key for stem-dedup.
+
+    Case-insensitive so ``Foo.PDF`` and ``foo.pdf`` collapse. Extension and
+    bookkeeping suffixes (``_20251231``, ``_v2``) are stripped. Two passes
+    in case a name carries both. Empty input returns empty string.
+    """
+    if not file_name:
+        return ""
+    stem, _ = os.path.splitext(file_name)
+    stem = _FILENAME_DATE_SUFFIX_RE.sub("", stem)
+    stem = _FILENAME_VERSION_SUFFIX_RE.sub("", stem)
+    return stem.lower()
+
+
+def _dedup_by_stem(hits: List[SearchHit]) -> List[SearchHit]:
+    """Keep the highest-scoring hit per filename stem, preserving order.
+
+    Hits without a ``file_name`` payload (rare, defensive) bypass dedup so a
+    payload accident never silently drops them. Stems that resolve to empty
+    also bypass — better to keep the hit than to merge unrelated documents.
+    """
+    seen: set[str] = set()
+    out: List[SearchHit] = []
+    for h in hits:
+        file_name = str((h.payload or {}).get("file_name") or "")
+        stem = _document_stem(file_name)
+        if not stem:
+            out.append(h)
+            continue
+        if stem in seen:
+            continue
+        seen.add(stem)
+        out.append(h)
+    return out
+
+
+def _merge_unique_by_point_id(
+    primary: List[SearchHit], extras: List[SearchHit]
+) -> List[SearchHit]:
+    """Append ``extras`` after ``primary``, skipping duplicates by point_id.
+
+    Used to fold past-citation candidates into the fresh retrieval set
+    without inflating the candidate pool when the same chunk shows up in
+    both. ``primary`` order is preserved so the reranker's input still
+    starts with the highest-confidence fresh candidates.
+    """
+    seen = {h.point_id for h in primary}
+    merged = list(primary)
+    for h in extras:
+        if h.point_id in seen:
+            continue
+        seen.add(h.point_id)
+        merged.append(h)
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -125,7 +201,18 @@ class RetrievalService:
         top_k: Optional[int] = None,
         min_score: Optional[float] = None,
         rerank_override: Optional[EffectiveRerankSettings] = None,
+        past_citation_ids: Optional[List[str]] = None,
     ) -> List[SearchHit]:
+        """Run the retrieval pipeline for a single query.
+
+        ``past_citation_ids`` (optional) carries Qdrant point IDs that were
+        cited in recent assistant messages of this conversation. They are
+        fetched as extra candidates (score=0 placeholder) and folded into
+        the same reranking pass so the cross-encoder decides whether
+        anything in conversation history is *still* relevant to the new
+        question. Solves "tell me about the other one you cited" style
+        follow-ups without an LLM-rewrite step.
+        """
         k = top_k or settings.RETRIEVAL_TOP_K
         threshold = min_score if min_score is not None else settings.MIN_RETRIEVAL_SCORE
 
@@ -133,9 +220,10 @@ class RetrievalService:
             self._resolve_rerank, tenant=tenant, project=project
         )
 
-        # Overfetch only if rerank is going to use the extra candidates —
-        # otherwise we pay for vectors we will throw away.
-        qdrant_k = max(k, rerank_cfg.overfetch_k) if rerank_cfg.enabled else k
+        # Overfetch covers two needs: rerank candidates AND stem-dedup
+        # slack. We always pull at least 2*k so the dedup step downstream
+        # can drop DOCX/PDF duplicates without starving the final top-K.
+        qdrant_k = max(k * 2, rerank_cfg.overfetch_k) if rerank_cfg.enabled else k * 2
 
         expanded = _expand_query_with_synonyms(question)
         vec = await self.ollama.embed(expanded)
@@ -149,9 +237,21 @@ class RetrievalService:
             score_threshold=threshold,
         )
 
+        # Fold in recently-cited chunks if any. Done before reranking so the
+        # cross-encoder can compare apples to apples: every candidate gets
+        # a fresh relevance score for the *new* question.
+        if past_citation_ids:
+            past_hits = await asyncio.to_thread(
+                self.store.get_points_by_ids,
+                tenant=tenant,
+                project=project,
+                point_ids=past_citation_ids,
+            )
+            hits = _merge_unique_by_point_id(hits, past_hits)
+
         if not rerank_cfg.enabled or len(hits) <= 1:
             # Reranking a single hit is a no-op; reranking zero is undefined.
-            return hits[:k]
+            return _dedup_by_stem(hits)[:k]
 
         passages = [str((h.payload or {}).get("text") or "") for h in hits]
         try:
@@ -170,7 +270,7 @@ class RetrievalService:
                 "tenant=%s project=%s",
                 exc, tenant, project,
             )
-            return hits[:k]
+            return _dedup_by_stem(hits)[:k]
 
         # Replace the bi-encoder score with the reranker score so downstream
         # display and downstream gating stay consistent with the new order.
@@ -178,4 +278,4 @@ class RetrievalService:
         for h, s in zip(hits, scores):
             rescored.append(SearchHit(score=float(s), payload=h.payload, point_id=h.point_id))
         rescored.sort(key=lambda h: h.score, reverse=True)
-        return rescored[:k]
+        return _dedup_by_stem(rescored)[:k]

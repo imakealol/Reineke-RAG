@@ -84,8 +84,10 @@ async def test_rerank_disabled_returns_top_k_from_qdrant_unchanged():
     )
 
     assert [h.payload["file_name"] for h in out] == [f"f{i}.docx" for i in range(5)]
-    # Qdrant was asked for top_k only — no overfetch when rerank is off.
-    assert store.last_top_k == 5
+    # Even with rerank off, we overfetch 2*top_k to give the stem-dedup
+    # step downstream enough slack to drop DOCX/PDF pairs without
+    # starving the final top-K.
+    assert store.last_top_k == 10
 
 
 @pytest.mark.asyncio
@@ -120,10 +122,10 @@ async def test_rerank_enabled_overfetches_then_reorders():
 
 
 @pytest.mark.asyncio
-async def test_rerank_overfetch_floor_is_top_k():
-    """Even if a per-collection K is somehow set below top_k, the
-    overfetch must rise to at least top_k so we don't shrink the
-    candidate pool."""
+async def test_rerank_overfetch_floor_is_2x_top_k():
+    """Even if a per-collection K is somehow set below 2*top_k, the
+    overfetch must rise to at least 2*top_k so stem-dedup has slack
+    AND the reranker has multiple candidates to reorder."""
     hits = [_hit(f"f{i}.docx", score=1.0 - i * 0.01) for i in range(20)]
     store = _StubStore(hits)
 
@@ -141,7 +143,7 @@ async def test_rerank_overfetch_floor_is_top_k():
         top_k=8,
         rerank_override=_settings(enabled=True, overfetch_k=3),  # nonsense
     )
-    assert store.last_top_k == 8  # max(8, 3) = 8
+    assert store.last_top_k == 16  # max(8*2, 3) = 16
 
 
 @pytest.mark.asyncio
