@@ -49,7 +49,19 @@ _CROSS_TURN_RECALL_PER_TURN = 3
 # citations even when the model decided to write its own list. Inline
 # mentions ("siehe die Quellen:") aren't matched because they lack the
 # trailing newline.
-_LLM_SOURCES_TRAILER_RE = re.compile(r"\n[ \t]*Quellen:[ \t]*\n")
+#
+# Markdown decorators are tolerated on both sides — qwen2.5 routinely
+# writes ``**Quellen:**`` and the older variant left the trailer in. The
+# optional groups cover bold (``**`` / ``__``) and ATX heading (``##``)
+# prefixes. We don't require open/close to match symmetrically because the
+# model is sloppy in practice.
+_LLM_SOURCES_TRAILER_RE = re.compile(
+    r"\n[ \t]*"
+    r"(?:[*_#]+[ \t]*)?"   # optional leading markdown decoration
+    r"Quellen:"
+    r"(?:[ \t]*[*_]+)?"    # optional trailing **/__
+    r"[ \t]*\n"
+)
 
 # Corpus-meta questions like "wie viele Dokumente hast du?" do not map onto
 # the retrieval pipeline — the LLM hallucinates a count from whatever top-K
@@ -215,6 +227,12 @@ class ChatService:
         question because we haven't persisted it yet at this point.
 
         ``turns`` is **pairs** (user + assistant), not individual messages.
+
+        Materialize ``(role, content)`` into plain tuples *inside* the
+        session, before the context manager commits + closes. session_scope
+        sets ``expire_on_commit=True`` (the default), so reading attributes
+        from the ORM instances afterwards would refresh and raise
+        ``DetachedInstanceError``. Same pattern as ``apply_overrides``.
         """
         if turns <= 0:
             return []
@@ -222,14 +240,14 @@ class ChatService:
         with self.session_factory() as db:
             rows = list(
                 db.execute(
-                    select(ChatMessage)
+                    select(ChatMessage.role, ChatMessage.content)
                     .where(ChatMessage.session_id == session_id)
                     .order_by(desc(ChatMessage.created_at))
                     .limit(turns * 2)
-                ).scalars().all()
+                ).all()
             )
         rows.reverse()
-        return [{"role": r.role, "content": r.content} for r in rows]
+        return [{"role": role, "content": content} for role, content in rows]
 
     # ----- meta-question deflection ---------------------------------------
 
@@ -284,10 +302,13 @@ class ChatService:
         """
         if turns <= 0 or per_turn <= 0:
             return []
+        # SELECT only the column we actually need, into plain strings — the
+        # ORM-instance attribute path would DetachedInstanceError after the
+        # session commits and closes (expire_on_commit=True default).
         with self.session_factory() as db:
-            rows = list(
+            sources_blobs: List[Optional[str]] = list(
                 db.execute(
-                    select(ChatMessage)
+                    select(ChatMessage.sources_json)
                     .where(
                         ChatMessage.session_id == session_id,
                         ChatMessage.role == "assistant",
@@ -298,11 +319,11 @@ class ChatService:
             )
         ids: List[str] = []
         seen: set[str] = set()
-        for row in rows:
-            if not row.sources_json:
+        for blob in sources_blobs:
+            if not blob:
                 continue
             try:
-                items = json.loads(row.sources_json)
+                items = json.loads(blob)
             except (TypeError, ValueError):
                 continue
             if not isinstance(items, list):
