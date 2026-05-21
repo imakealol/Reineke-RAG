@@ -72,9 +72,13 @@ async def test_retrieve_returns_sources_without_llm():
     assert len(resp.sources) == 2
     assert resp.sources[0].file_name == "PL.ISMS007_Kennwort_Richtlinie.docx"
     assert resp.sources[0].score == pytest.approx(0.81)
-    # Top-k threaded through unchanged when omitted
+    # Top-k threaded through unchanged when omitted; history defaults to None.
     assert retrieval.calls == [
-        {"tenant": "t", "project": "p", "question": "Was sagt die Kennwort-Richtlinie?", "top_k": None}
+        {
+            "tenant": "t", "project": "p",
+            "question": "Was sagt die Kennwort-Richtlinie?",
+            "top_k": None, "history": None,
+        }
     ]
 
 
@@ -94,6 +98,33 @@ async def test_retrieve_passes_top_k_override():
     await retrieve_endpoint(req, svc=svc)
 
     assert retrieval.calls[0]["top_k"] == 12
+
+
+@pytest.mark.asyncio
+async def test_retrieve_threads_history_into_retrieval_call():
+    """The /retrieve endpoint must forward the history list to the
+    retrieval layer so the eval harness can exercise the query-rewriter
+    without going through /chat + SQLite persistence."""
+    from app.main import retrieve_endpoint
+    from app.schemas import HistoryTurn, RetrieveRequest
+
+    retrieval = _StubRetrieval([])
+    svc = ChatService(retrieval=retrieval, ollama=_ExplodingOllama())  # type: ignore[arg-type]
+
+    req = RetrieveRequest(
+        tenant="t", project="p", question="und welche?",
+        history=[
+            HistoryTurn(role="user", content="Welche Backup-Frequenz?"),
+            HistoryTurn(role="assistant", content="Täglich, wöchentlich, monatlich."),
+        ],
+    )
+    await retrieve_endpoint(req, svc=svc)
+
+    forwarded = retrieval.calls[0]["history"]
+    assert forwarded == [
+        {"role": "user", "content": "Welche Backup-Frequenz?"},
+        {"role": "assistant", "content": "Täglich, wöchentlich, monatlich."},
+    ]
 
 
 def test_hits_to_sources_maps_payload_fields():

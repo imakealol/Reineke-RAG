@@ -187,9 +187,23 @@ class ChatResponse(BaseModel):
 
 # ----- Retrieve (LLM-less; used by the eval runner for fast iteration) ------
 
+class HistoryTurn(BaseModel):
+    """A single user-or-assistant turn passed to /retrieve so the
+    query-rewriter can resolve pronoun follow-ups in eval scenarios. The
+    main /chat path loads its history from SQLite by session_id; this
+    field exists so the eval harness can simulate multi-turn flows
+    without persisting state.
+    """
+    role: str = Field(min_length=1)  # 'user' or 'assistant'
+    content: str = ""
+
+
 class RetrieveRequest(TenantProject):
     question: str = Field(min_length=1)
     top_k: Optional[int] = None
+    # Optional prior turns, oldest-first. Used by the query-rewriter for
+    # follow-up resolution. Empty / None = treat as a fresh conversation.
+    history: Optional[List[HistoryTurn]] = None
 
 
 class RetrieveResponse(BaseModel):

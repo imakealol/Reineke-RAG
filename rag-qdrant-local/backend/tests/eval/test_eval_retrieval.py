@@ -108,14 +108,43 @@ def _rank_of_first_match(sources: List[Dict[str, Any]], needles: List[str]) -> O
     return None
 
 
+def _history_from_question(q: Dict[str, Any]) -> Optional[List[Dict[str, str]]]:
+    """Read the optional multi-turn ``history`` field from a question.
+
+    Eval YAML carries history as a list of ``{role, content}`` dicts; we
+    return it in the exact shape ``/chat`` and ``/retrieve`` accept on the
+    wire. Returns ``None`` for single-turn questions so we don't pad the
+    request body needlessly.
+    """
+    raw = q.get("history")
+    if not raw or not isinstance(raw, list):
+        return None
+    out: List[Dict[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role") or "").strip()
+        content = str(item.get("content") or "")
+        if role:
+            out.append({"role": role, "content": content})
+    return out or None
+
+
 def _query_chat(
     client: httpx.Client,
     backend_url: str,
     tenant: str,
     project: str,
     question: str,
+    history: Optional[List[Dict[str, str]]] = None,
 ) -> Tuple[str, List[Dict[str, Any]], float]:
-    """POST to ``/chat`` and return ``(answer, sources, latency_seconds)``."""
+    """POST to ``/chat`` and return ``(answer, sources, latency_seconds)``.
+
+    History is intentionally NOT sent here — the /chat path resolves
+    history from SQLite by session_id. Multi-turn eval cases are
+    exercised through ``_query_retrieve`` instead (cheaper, deterministic,
+    no SQLite persistence side effects).
+    """
     started = time.monotonic()
     resp = client.post(
         f"{backend_url}/chat",
@@ -143,17 +172,21 @@ def _query_retrieve(
     tenant: str,
     project: str,
     question: str,
+    history: Optional[List[Dict[str, str]]] = None,
 ) -> Tuple[str, List[Dict[str, Any]], float]:
     """POST to ``/retrieve`` — same retrieval path as ``/chat`` but no LLM.
 
-    Returns ``(answer, sources, latency)`` to keep the shape compatible
-    with ``_query_chat``. ``answer`` is always the empty string in this
-    mode because the LLM is not invoked.
+    Optional ``history`` exercises the query-rewriter for multi-turn
+    cases. Returns ``(answer, sources, latency)`` to keep the shape
+    compatible with ``_query_chat``; answer is always empty in this mode.
     """
+    body: Dict[str, Any] = {"tenant": tenant, "project": project, "question": question}
+    if history:
+        body["history"] = history
     started = time.monotonic()
     resp = client.post(
         f"{backend_url}/retrieve",
-        json={"tenant": tenant, "project": project, "question": question},
+        json=body,
         timeout=REQUEST_TIMEOUT_SECONDS,
     )
     elapsed = time.monotonic() - started
@@ -455,14 +488,17 @@ def test_eval_retrieval_scorecard(
                 end="",
                 flush=True,
             )
+            history = _history_from_question(q)
             try:
                 if retrieval_only:
                     answer, sources, latency = _query_retrieve(
-                        client, eval_backend_url, eval_tenant, eval_project, q["question"]
+                        client, eval_backend_url, eval_tenant, eval_project,
+                        q["question"], history=history,
                     )
                 else:
                     answer, sources, latency = _query_chat(
-                        client, eval_backend_url, eval_tenant, eval_project, q["question"]
+                        client, eval_backend_url, eval_tenant, eval_project,
+                        q["question"], history=history,
                     )
             except httpx.HTTPError as exc:
                 print(f"✗ HTTP error: {exc}", flush=True)
